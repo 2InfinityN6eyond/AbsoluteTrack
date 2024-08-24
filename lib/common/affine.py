@@ -49,6 +49,16 @@ def make_look_at_matrix(
     center: np.ndarray,
     camera_angle: float = 0,
 ) -> np.ndarray:
+    """
+    args:
+        orig_world_to_eye:  world to eye transform
+            inverse of camera.camera_to_world_xf
+        center:  np.array. (3,)
+            3D world coordinate of center of the object of interest
+        camera_angle: the angle of the camera
+            camera_angle: how the camera is oriented physically so that we can rotate the object of
+            interest to the 'upright' direction
+    """
     center_local = transform3(orig_world_to_eye, center)
     z_dir_local = center_local / np.linalg.norm(center_local)
     delta_r_local = from_two_vectors(
