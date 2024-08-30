@@ -5,7 +5,7 @@
 # LICENSE file in the root directory of this source tree.
 
 from enum import Enum
-from typing import NamedTuple, Optional, Union
+from typing import NamedTuple, Optional, Union, Dict, Any
 
 import torch
 
@@ -60,6 +60,19 @@ class HandModel(NamedTuple):
     mesh_triangles: Optional[torch.Tensor] = None
     dense_bone_weights: Optional[torch.Tensor] = None
     joint_limits: Optional[torch.Tensor] = None
+    
+    @classmethod
+    def from_json(cls, json_data: Dict[str, Any]) -> 'HandModel':
+        return cls(**{
+            key: torch.tensor(value) if value is not None else None
+            for key, value in json_data.items()
+        })
+
+    def to_json(self) -> Dict[str, Any]:
+        return {
+            key: value.tolist() if isinstance(value, torch.Tensor) else value
+            for key, value in self._asdict().items()
+        }
 
 
 def scaled_hand_model(hand: HandModel, multiplier: float) -> HandModel:

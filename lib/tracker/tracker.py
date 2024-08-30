@@ -13,6 +13,12 @@ import cv2
 import lib.common.camera as camera
 import numpy as np
 import torch
+
+# HJP added this.
+import lib.common.affine as affine
+import lib.common.crop as crop
+
+
 from lib.common.hand import HandModel, NUM_HANDS, scaled_hand_model
 from lib.data_utils import bundles
 from lib.models.regressor import RegressorOutput
@@ -47,7 +53,9 @@ class HandTrackerOpts:
     num_crop_points: int = 63
     enable_memory: bool = True
     use_stored_pose_for_crop: bool = True
-    hand_ratio_in_crop: float = 0.95
+    # hand_ratio_in_crop: float = 0.95
+    hand_ratio_in_crop: float = 0.8
+    
     min_required_vis_landmarks: int = 19
 
 
@@ -77,7 +85,14 @@ def _warp_image(
     map_x = src_win_pts[:, 0].reshape((H, W))
     map_y = src_win_pts[:, 1].reshape((H, W))
 
-    return cv2.remap(src_image, map_x, map_y, interpolation)
+    warped_image = cv2.remap(src_image, map_x, map_y, interpolation)
+    
+    # cv2.imshow("warped_image", warped_image)
+    # key = cv2.waitKey(1)
+    # if key == ord('q'):
+    #     exit()
+    
+    return warped_image
 
 
 class HandTracker:
@@ -97,6 +112,117 @@ class HandTracker:
 
     def reset_history(self) -> None:
         self._valid_tracking_history[:] = False
+
+
+    def gen_crop_cameras_from_stereo_camera_with_window_hand_pose(
+        self,
+        camera_left: camera.CameraModel,
+        camera_right: camera.CameraModel,
+        window_hand_pose_left: Dict[int, np.ndarray],
+        window_hand_pose_right: Dict[int, np.ndarray],
+    ) :
+        """
+        window coordinate : pixel coordinate
+        get crop_cameras from camera, view and 2D pose
+        
+        Assumstions :
+            camera is stereo camera. 
+            2D Hand pose is already valid.
+        args :
+            camera_left  : camera.CameraModel
+            camera_right : camera.CameraModel
+            window_hand_pose_left  : Dict[int, np.ndarray]
+            window_hand_pose_right : Dict[int, np.ndarray]
+        """
+        crop_camera_dict: Dict[int, Dict[int, camera.PinholePlaneCameraModel]] = {}
+        
+        # perform for left camera
+        camera_left_world_to_eye = np.linalg.inv(camera_left.camera_to_world_xf)
+        for hand_idx, window_hand_pose in window_hand_pose_left.items():
+            # hand_idx      left : 0  right : 1
+            # window_hand_pose : np.array, (21, 2). window coordinate
+            crop_camera_dict_per_hand: Dict[int, camera.PinholePlaneCameraModel] = {}
+
+            
+            world_hand_pose = camera_left.eye_to_world(
+                camera_left.window_to_eye(window_hand_pose[:, :2])
+            )   
+            
+            world_hand_pose_center = (
+                world_hand_pose.min(axis=0) + world_hand_pose.max(axis=0)
+            ) / 2
+            
+            new_world_to_eye = affine.make_look_at_matrix(
+                camera_left_world_to_eye,
+                world_hand_pose_center,
+                0
+            )
+            if hand_idx == 1:
+                mirrorx = np.eye(4, dtype=np.float32)
+                mirrorx[0, 0] = -1
+                new_world_to_eye = mirrorx @ new_world_to_eye
+            
+            fx_fy, cx_cy = crop.gen_intrinsics_from_bounding_pts(
+                affine.transform3(new_world_to_eye, world_hand_pose),
+                self._input_size[0], self._input_size[1],
+            )
+            fx_fy = self._hand_ratio_in_crop * fx_fy
+            
+            new_cam = camera.PinholePlaneCameraModel(
+                width=self._input_size[0],
+                height=self._input_size[1],
+                f=fx_fy,
+                c=cx_cy,
+                distort_coeffs = [],
+                camera_to_world_xf=np.linalg.inv(new_world_to_eye),
+            )
+            crop_camera_dict_per_hand[hand_idx] = new_cam
+            crop_camera_dict[hand_idx] = crop_camera_dict_per_hand
+            
+        camera_right_world_to_eye = np.linalg.inv(camera_right.camera_to_world_xf)
+        for hand_idx, window_hand_pose in window_hand_pose_right.items():
+            crop_camera_dict_per_hand = {}
+            
+            world_hand_pose = camera_right.eye_to_world(
+                camera_right.window_to_eye(window_hand_pose[:, :2])
+            )   
+            
+            world_hand_pose_center = (
+                world_hand_pose.min(axis=0) + world_hand_pose.max(axis=0)
+            ) / 2
+            
+            new_world_to_eye = affine.make_look_at_matrix(
+                camera_right_world_to_eye,
+                world_hand_pose_center,
+                0
+            )
+            if hand_idx == 1:
+                mirrorx = np.eye(4, dtype=np.float32)
+                mirrorx[0, 0] = -1
+                new_world_to_eye = mirrorx @ new_world_to_eye
+            
+            fx_fy, cx_cy = crop.gen_intrinsics_from_bounding_pts(
+                affine.transform3(new_world_to_eye, world_hand_pose),
+                self._input_size[0], self._input_size[1],
+            )
+            fx_fy = self._hand_ratio_in_crop * fx_fy
+            
+            new_cam = camera.PinholePlaneCameraModel(
+                width=self._input_size[0],
+                height=self._input_size[1],
+                f=fx_fy,
+                c=cx_cy,
+                distort_coeffs = [],
+                camera_to_world_xf=np.linalg.inv(new_world_to_eye),
+            )
+            crop_camera_dict_per_hand[hand_idx] = new_cam
+            if hand_idx in crop_camera_dict :
+                crop_camera_dict[hand_idx].update(crop_camera_dict_per_hand)
+            else :
+                crop_camera_dict[hand_idx] = crop_camera_dict_per_hand
+            
+        return crop_camera_dict
+            
 
     def gen_crop_cameras(
         self,

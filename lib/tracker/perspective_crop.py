@@ -92,6 +92,24 @@ def _get_crop_points_from_hand_pose(
     hand_idx: int,
     num_crop_points: int,
 ) -> np.ndarray:
+    
+    '''
+    args :
+        hand_model : HandModel
+        
+        gt_hand_pose : SingleHandPose
+        
+        hand_idx : int
+
+        num_crop_points : int
+            ㅅㅂ WTF does num_crop_points do?
+    
+    return :
+        np.ndarray of shape (num_crop_points, 3)
+        each row is a 3D keypoint in the 3D coordinate
+        (not sure world space or eye space)
+    '''
+    
     assert num_crop_points in [21, 42, 63]
     neutral_hand_pose = SingleHandPose(
         joint_angles=neutral_joint_angles(hand_model).numpy(),

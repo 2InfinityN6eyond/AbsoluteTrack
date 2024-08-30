@@ -275,9 +275,9 @@ class CameraModel(CameraProjection, abc.ABC):
     def window_to_eye(self, w):
         """Unproject 2d window coordinates to unit-length 3D eye coordinates"""
         q = (np.asarray(w) - self.c) / self.f
-        assert isinstance(
-            self.distort, NoDistortion
-        ), "Only unprojection for NoDistortion camera is supported"
+        # assert isinstance(
+        #     self.distort, NoDistortion
+        # ), "Only unprojection for NoDistortion camera is supported"
         return self.unproject(q)
 
     def crop(
@@ -321,7 +321,11 @@ class PinholePlaneCameraModel(PerspectiveProjection, CameraModel):
     distortion_model = NoDistortion
 
     def uv_to_window_matrix(self):
-        """Return the 3x3 intrinsics matrix"""
+        """
+        Return the 3x3 intrinsics matrix
+        
+        HandTracker._make_inputs 에서 crop_camera의 intrinsic 을 만들때 사용됨
+        """
         return np.array(
             [[self.f[0], 0, self.c[0]], [0, self.f[1], self.c[1]], [0, 0, 1]]
         )
@@ -330,6 +334,43 @@ class PinholePlaneCameraModel(PerspectiveProjection, CameraModel):
 class Fisheye62CameraModel(ArctanProjection, CameraModel):
     distortion_model = Fisheye62CameraModel
 
+    
+    # @staticmethod
+    # def unproject(uv):
+    #     """
+    #     Unproject 2D window coordinates to unit-length 3D eye coordinates.
+        
+    #     This implementation assumes that `uv` are in normalized image coordinates
+    #     (i.e., after subtracting the principal point and dividing by the focal length).
+    #     """
+    #     assert uv.shape[-1] == 2, "Input should be a 2D point or array of 2D points."
+
+    #     u, v = np.moveaxis(uv, -1, 0)
+    #     r = np.sqrt(u * u + v * v)
+
+    #     # Compute the angle of the ray in radians
+    #     theta = np.arctan(r)
+
+    #     # Compute the normalized z component (cosine of theta)
+    #     z = np.cos(theta)
+
+    #     # Compute the radial distance on the image plane
+    #     r_normalized = np.sin(theta)
+
+    #     # Normalize u and v by their radial distance to get the x and y components
+    #     x = u * r_normalized / np.maximum(r, 1e-12)
+    #     y = v * r_normalized / np.maximum(r, 1e-12)
+
+    #     return np.stack([x, y, z], axis=-1)
+
+    # def window_to_eye(self, w):
+    #     """
+    #     Unproject 2D window coordinates to unit-length 3D eye coordinates
+    #     with fisheye distortion.
+    #     """
+    #     q = (np.asarray(w) - self.c) / self.f
+        
+    #     return self.unproject(q)
 
 def read_camera_from_json(js):
     if isinstance(js, str):
