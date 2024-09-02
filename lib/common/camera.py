@@ -102,6 +102,8 @@ class NoDistortion(NamedTuple):
     def evaluate(self, p: np.ndarray) -> np.ndarray:
         return p
 
+    def undistort(self, q: np.ndarray) -> np.ndarray:
+        return q
 
 class Fisheye62CameraModel(NamedTuple):
     """
@@ -140,6 +142,43 @@ class Fisheye62CameraModel(NamedTuple):
         y += 2 * p1 * xy + p2 * (r2 + 2 * y2)
         return np.stack((x, y), axis=-1)
 
+
+    def undistort(self, q: np.ndarray, solver_iters: int = 50) -> np.ndarray :
+        """
+        Undistorts 2D points using the fisheye radial distortion parameters.
+
+        Arguments:
+        ----------
+        distorted_points : ndarray[..., 2]
+            Array of distorted 2D points to be undistorted.
+
+        Returns:
+        --------
+
+        undistorted_points : ndarray[..., 2]
+            Array of undistorted 2D points.
+        """
+        k1, k2, k3, k4, p1, p2, k5, k6 = self
+        x_distorted = q[..., 0]
+        y_distorted = q[..., 1]
+
+        # Initial guess: the distorted points as undistorted
+        x_undistorted = x_distorted.copy()
+        y_undistorted = y_distorted.copy()
+
+        for _ in range(5):  # Perform 5 iterations to refine the undistorted coordinates
+            r2 = x_undistorted**2 + y_undistorted**2
+            radial_factor = (
+                1 + k1*r2 + k2 * r2**2 + 
+                k3 * r2**3 + k4 * r2**4 +
+                k5 * r2**5 + k6 * r2**6
+            )
+
+            # Update the undistorted points by scaling the distorted points
+            x_undistorted = x_distorted / radial_factor
+            y_undistorted = y_distorted / radial_factor
+
+        return np.stack([x_undistorted, y_undistorted], axis=-1)
 
 # ---------------------------------------------------------------------
 # API Conventions and naming
@@ -271,6 +310,12 @@ class CameraModel(CameraProjection, abc.ABC):
         p = self.project(v)
         q = self.distort.evaluate(p)
         return q * self.f + self.c
+    
+
+    def eye_to_window_undistorted(self, v):
+        """Project eye coordinates to 2d window coordinates without distortion"""
+        p = self.project(v)
+        return p * self.f + self.c
 
     def window_to_eye(self, w):
         """Unproject 2d window coordinates to unit-length 3D eye coordinates"""
@@ -278,7 +323,10 @@ class CameraModel(CameraProjection, abc.ABC):
         # assert isinstance(
         #     self.distort, NoDistortion
         # ), "Only unprojection for NoDistortion camera is supported"
-        return self.unproject(q)
+
+        return self.unproject(
+            self.distort.undistort(q)
+        )
 
     def crop(
         self,

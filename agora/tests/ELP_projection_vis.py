@@ -171,19 +171,44 @@ if __name__ == "__main__" :
                 ])
                 mp_hand_pose_dict_right[hand_index] = hand_pose
         
+        frame_left = cv2.cvtColor(frame_left, cv2.COLOR_RGB2BGR)
+        frame_right = cv2.cvtColor(frame_right, cv2.COLOR_RGB2BGR)
+
         # plot original window pose
         for hand_index, hand_pose in mp_hand_pose_dict_left.items() :
             for point in hand_pose :
                 x, y, z = point
-                cv2.circle(frame_left, (int(x), int(y)), 5, (0, 255, 0), -1)
+                cv2.circle(frame_left, (int(x), int(y)), 3, (0, 0, 255), -1)
         
         for hand_index, hand_pose in mp_hand_pose_dict_right.items() :
             for point in hand_pose :
                 x, y, z = point
-                cv2.circle(frame_right, (int(x), int(y)), 5, (0, 255, 0), -1)
+                cv2.circle(frame_right, (int(x), int(y)), 3, (0, 0, 255), -1)
         
+        # plot reprojected without distortion
+        # for hand_index, keypoints_window_orig in mp_hand_pose_dict_left.items() :
+        #     keypoints_eye_orig = cam_left.window_to_eye(
+        #         keypoints_window_orig[:, :2]
+        #     )
+        #     keypoints_window_reproj = cam_left.eye_to_window_undistorted(
+        #         keypoints_eye_orig
+        #     )
+        #     for point in keypoints_window_reproj :
+        #         x, y = point
+        #         cv2.circle(frame_left, (int(x), int(y)), 1, (0, 255, 0), -1)
         
-        # plot reprojected window pose
+        # for hand_index, keypoints_window_orig in mp_hand_pose_dict_right.items() :
+        #     keypoints_eye_orig = cam_right.window_to_eye(
+        #         keypoints_window_orig[:, :2]
+        #     )
+        #     keypoints_window_reproj = cam_right.eye_to_window_undistorted(
+        #         keypoints_eye_orig
+        #     )
+        #     for point in keypoints_window_reproj :
+        #         x, y = point
+        #         cv2.circle(frame_right, (int(x), int(y)), 1, (0, 255, 0), -1)
+        
+        # plot reprojected and distorted window pose
         for hand_index, keypoints_window_orig in mp_hand_pose_dict_left.items() :
             keypoints_eye_orig = cam_left.window_to_eye(
                 keypoints_window_orig[:, :2]
@@ -193,7 +218,7 @@ if __name__ == "__main__" :
             )
             for point in keypoints_window_reproj :
                 x, y = point
-                cv2.circle(frame_left, (int(x), int(y)), 5, (255, 0, 0), -1)
+                cv2.circle(frame_left, (int(x), int(y)), 1, (255, 0, 0), -1)
         
         for hand_index, keypoints_window_orig in mp_hand_pose_dict_right.items() :
             keypoints_eye_orig = cam_right.window_to_eye(
@@ -204,17 +229,17 @@ if __name__ == "__main__" :
             )
             for point in keypoints_window_reproj :
                 x, y = point
-                cv2.circle(frame_right, (int(x), int(y)), 5, (255, 0, 0), -1)
+                cv2.circle(frame_right, (int(x), int(y)), 1, (255, 0, 0), -1)
         
         
         
         # draw lines from center to boundary.
         for p1, p2 in zip(p1_list, p2_list) :
-            cv2.line(frame_left, p1, p2, (0, 0, 255), 2)
-            cv2.line(frame_right, p1, p2, (0, 0, 255), 2)
+            cv2.line(frame_left, p1, p2, (0, 0, 0), 1)
+            cv2.line(frame_right, p1, p2, (0, 0, 0), 1)
         
-        cv2.imshow('frame_left', cv2.cvtColor(frame_left, cv2.COLOR_RGB2BGR))
-        cv2.imshow('frame_right', cv2.cvtColor(frame_right, cv2.COLOR_RGB2BGR))
+        cv2.imshow('frame_left', frame_left)
+        cv2.imshow('frame_right', frame_right)
         if cv2.waitKey(1) & 0xFF == ord('q'):
             break
     cap.release()

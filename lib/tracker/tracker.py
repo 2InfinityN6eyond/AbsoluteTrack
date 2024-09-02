@@ -27,6 +27,7 @@ from lib.models.umetrack_model import InputFrameData, InputFrameDesc, InputSkele
 from .perspective_crop import gen_crop_cameras_from_pose
 from .tracking_result import SingleHandPose, TrackingResult
 
+
 logger = logging.getLogger(__name__)
 
 MM_TO_M = 0.001
@@ -87,10 +88,10 @@ def _warp_image(
 
     warped_image = cv2.remap(src_image, map_x, map_y, interpolation)
     
-    # cv2.imshow("warped_image", warped_image)
-    # key = cv2.waitKey(1)
-    # if key == ord('q'):
-    #     exit()
+    cv2.imshow("warped_image", warped_image)
+    key = cv2.waitKey(1)
+    if key == ord('q'):
+        exit()
     
     return warped_image
 
