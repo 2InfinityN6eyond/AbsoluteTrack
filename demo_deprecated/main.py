@@ -24,7 +24,7 @@ class CameraConfig:
 
 @dataclass
 class BufferConfig:
-    size: int = 60
+    size: int = 6
 
 @dataclass
 class MediaPipeConfig :
@@ -49,18 +49,111 @@ class Config:
     ume_tracker: UmeTrackerConfig = UmeTrackerConfig()
 
 
+class CameraReader(mp.Process):
+    def __init__(
+        self,
+        config,
+        shared_array_rgb,
+        shared_array_mono,
+        camreader2mp,
+        stop_event,
+        verbose = False
+    ):
+        super().__init__()
+        self.config = config
+        self.shared_array_rgb = shared_array_rgb
+        self.shared_array_mono = shared_array_mono
+        self.camreader2mp = camreader2mp
+        self.stop_event = stop_event
+        self.verbose = verbose
+        
+    def run(self):
+        cap = cv2.VideoCapture(self.config.camera.camera_index)
+        cap.set(cv2.CAP_PROP_FRAME_WIDTH, self.config.camera.image_width * (2 if self.config.is_stereo else 1))
+        cap.set(cv2.CAP_PROP_FRAME_HEIGHT, self.config.camera.image_height)
+        cap.set(cv2.CAP_PROP_FPS, self.config.camera.fps)
+
+        # initialize list of shared array
+        self.shared_array_rgb_list = [
+            np.frombuffer(
+                self.shared_array_rgb[i].buf, dtype=np.uint8
+            ).reshape((
+                2 if self.config.is_stereo else 1, 
+                self.config.camera.image_height, 
+                self.config.camera.image_width,
+                3
+            )) for i in range(self.config.buffer.size)
+        ]
+        self.shared_array_mono_list = [
+            np.frombuffer(
+                self.shared_array_mono[i].buf, dtype=np.uint8
+            ).reshape((
+                2 if self.config.is_stereo else 1, 
+                self.config.camera.image_height, 
+                self.config.camera.image_width,
+            )) for i in range(self.config.buffer.size)
+        ]
+
+        fps1 = 0
+        index = 0
+        while not self.stop_event.is_set():
+            stt1 = time.time()
+            frame_index = index % len(self.shared_array_rgb)
+            ret, frame = cap.read()
+            if not ret:
+                continue
+            frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+            
+            if self.config.camera.flip_horizontal:
+                frame = cv2.flip(frame, 1)
+            if self.config.camera.flip_vertical:
+                frame = cv2.flip(frame, 0)
+            
+            frame_mono = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+            
+            # handle stereo vs single view
+            if self.config.is_stereo:
+                frame_rgb = np.array([
+                    frame[:, :self.config.camera.image_width], 
+                    frame[:, self.config.camera.image_width:]
+                ])
+                frame_mono = np.array([
+                    frame_mono[:, :self.config.camera.image_width],
+                    frame_mono[:, self.config.camera.image_width:] 
+                ])
+            else:
+                frame_rgb = np.array([frame])
+                frame_mono = np.array([frame_mono])
+
+            self.shared_array_rgb_list[frame_index][:] = frame_rgb.copy()
+            self.shared_array_mono_list[frame_index][:] = frame_mono.copy()
+    
+            self.camreader2mp.put(index)
+                
+            index += 1
+            index %= len(self.shared_array_rgb)
+            
+            fps1 = 0.5 * fps1 + 0.5 * (1 / (time.time() - stt1))
+            
+            if self.verbose:
+                print(f"CAM FPS: {int(fps1)}")
+            
+        cap.release()
+
 
 class ImageVisualizer(mp.Process):
     def __init__(
         self,
         config,
         shared_array_rgb,
+        shared_mp_pose_array,
         ume2imgviz,
         stop_event
     ):
         super().__init__()
         self.config = config
         self.shared_array_rgb = shared_array_rgb
+        self.shared_mp_pose_array = shared_mp_pose_array
         self.ume2imgviz = ume2imgviz
         self.stop_event = stop_event
         
@@ -76,7 +169,18 @@ class ImageVisualizer(mp.Process):
                 3
             )) for i in range(self.config.buffer.size)
         ]
-
+        
+        # initialize hand shared array
+        self.shared_mp_pose_list = [
+            np.frombuffer(
+                self.shared_mp_pose_array[i].buf, dtype=np.float32
+            ).reshape((
+                2 if self.config.is_stereo else 1,
+                self.config.media_pipe.max_num_hands,
+                self.config.media_pipe.num_keypoints,
+                3
+            )) for i in range(self.config.buffer.size)
+        ]
         
         mp_handedness_color_map = {
             0: (255, 100, 0), # red
@@ -104,6 +208,7 @@ class ImageVisualizer(mp.Process):
             stt2 = time.time()
             
             frame = self.shared_array_rgb_list[index]
+            mp_pose_results = self.shared_mp_pose_list[index]
             
             mp_pose_dict = mp_hand_pose_dict
             
@@ -176,15 +281,49 @@ if __name__ == "__main__":
         ) for _ in range(config.buffer.size)
     ]
     
+    # Create shared memory for the mediapipe hand pose results
+    shared_mp_pose_array = [
+        shared_memory.SharedMemory(
+            create=True, size=np.prod((
+                2 if config.is_stereo else 1,
+                config.media_pipe.max_num_hands,
+                config.media_pipe.num_keypoints,
+                3,
+                4 # float32
+            ))
+        ) for _ in range(config.buffer.size)
+    ]
+    
+    # Create shared memory for the UmeTrack hand pose results
+    shared_ume_pose_array = [
+        shared_memory.SharedMemory(
+            create=True, size=np.prod((
+                config.ume_tracker.max_num_hands,
+                config.ume_tracker.num_keypoints,
+                3,
+                4 # float32
+            ))
+        ) for _ in range(config.buffer.size)
+    ]
     stop_event = mp.Event()
     
+    camreader2mp = mp.Queue()
     mp2ume = mp.Queue()
     ume2imgviz = mp.Queue()
     
+    camera_reader = CameraReader(
+        config              = config, 
+        shared_array_rgb    = shared_array_rgb,
+        shared_array_mono   = shared_array_mono,
+        camreader2mp        = camreader2mp,
+        stop_event          = stop_event,
+        verbose             = False
+    )
     media_pipe_estimator = MediaPipeEstimator(
         config                  = config,
         shared_array_rgb        = shared_array_rgb,
-        shared_array_mono       = shared_array_mono,
+        shared_mp_pose_array    = shared_mp_pose_array,
+        camreader2mp            = camreader2mp,
         mp2ume                  = mp2ume,
         stop_event              = stop_event,
         verbose                 = True
@@ -192,6 +331,8 @@ if __name__ == "__main__":
     ume_tracker = UmeTracker(
         config                  = config, 
         shared_array_mono       = shared_array_mono,
+        shared_mp_pose_array    = shared_mp_pose_array,
+        shared_ume_pose_array   = shared_ume_pose_array,
         mp2ume                  = mp2ume,
         ume2imgviz              = ume2imgviz,
         stop_event              = stop_event,
@@ -201,6 +342,7 @@ if __name__ == "__main__":
     img_visualizer = ImageVisualizer(
         config                  = config,
         shared_array_rgb        = shared_array_rgb,
+        shared_mp_pose_array    = shared_mp_pose_array,
         ume2imgviz              = ume2imgviz,
         stop_event              = stop_event
     )
@@ -209,6 +351,7 @@ if __name__ == "__main__":
         img_visualizer,
         ume_tracker,
         media_pipe_estimator,
+        camera_reader,
     ]
     for p in processes:
         p.start()

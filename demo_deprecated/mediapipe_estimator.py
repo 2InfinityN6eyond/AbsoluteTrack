@@ -11,7 +11,8 @@ class MediaPipeEstimator(mp.Process):
         self,
         config,
         shared_array_rgb,
-        shared_array_mono,
+        shared_mp_pose_array,
+        camreader2mp,
         mp2ume,
         stop_event,
         verbose = False
@@ -19,20 +20,12 @@ class MediaPipeEstimator(mp.Process):
         super().__init__()
         self.config = config
         self.shared_array_rgb = shared_array_rgb
-        self.shared_array_mono = shared_array_mono
+        self.shared_mp_pose_array = shared_mp_pose_array
+        self.camreader2mp = camreader2mp
         self.mp2ume = mp2ume
         self.stop_event = stop_event
         self.verbose = verbose
-        
     def run(self):
-        
-        # open camera
-        cap = cv2.VideoCapture(self.config.camera.camera_index)
-        cap.set(cv2.CAP_PROP_FRAME_WIDTH, self.config.camera.image_width * (2 if self.config.is_stereo else 1))
-        cap.set(cv2.CAP_PROP_FRAME_HEIGHT, self.config.camera.image_height)
-        cap.set(cv2.CAP_PROP_FPS, self.config.camera.fps)
-        
-                
         # initialize image shared array
         self.shared_array_rgb_list = [
             np.frombuffer(
@@ -44,65 +37,47 @@ class MediaPipeEstimator(mp.Process):
                 3
             )) for i in range(self.config.buffer.size)
         ]
-        self.shared_array_mono_list = [
-            np.frombuffer(
-                self.shared_array_mono[i].buf, dtype=np.uint8
-            ).reshape((
-                2 if self.config.is_stereo else 1,
-                self.config.camera.image_height,
-                self.config.camera.image_width,
-            )) for i in range(self.config.buffer.size)
-        ]
         
         mp_hands = mediapipe.solutions.hands
+        # initialize hand detector list for each camera
         mp_hand_detector_list = [mp_hands.Hands(
             max_num_hands       = self.config.media_pipe.max_num_hands,
             model_complexity    = self.config.media_pipe.model_complexity,
             min_detection_confidence= self.config.media_pipe.min_detection_confidence,
             min_tracking_confidence = self.config.media_pipe.min_tracking_confidence
         ) for _ in range(2 if self.config.is_stereo else 1)]        
-    
+        
+        # initialize hand shared array
+        '''
+        self.shared_mp_pose_list = [
+            np.frombuffer(
+                self.shared_mp_pose_array[i].buf, dtype=np.float32
+            ).reshape((
+                2 if self.config.is_stereo else 1,
+                self.config.media_pipe.max_num_hands,
+                self.config.media_pipe.num_keypoints,
+                3
+            )) for i in range(self.config.buffer.size)
+        ]
+        '''
         
         fps = 0
-        index = 0
         while not self.stop_event.is_set():
             stt1 = time.time()
             
-            ret, frame = cap.read()
-            if not ret:
+            if self.camreader2mp.empty():
                 continue
-            frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
             
-            if self.config.camera.flip_horizontal:
-                frame = cv2.flip(frame, 1)
-            if self.config.camera.flip_vertical:
-                frame = cv2.flip(frame, 0)
+            index = self.camreader2mp.get()
             
-            frame_mono = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
             
-            # handle stereo vs single view
-            if self.config.is_stereo:
-                frame_rgb = np.array([
-                    frame[:, :self.config.camera.image_width], 
-                    frame[:, self.config.camera.image_width:]
-                ])
-                frame_mono = np.array([
-                    frame_mono[:, :self.config.camera.image_width],
-                    frame_mono[:, self.config.camera.image_width:] 
-                ])
-            else:
-                frame_rgb = np.array([frame])
-                frame_mono = np.array([frame_mono])
-
-            self.shared_array_rgb_list[index][:] = frame_rgb.copy()
-            self.shared_array_mono_list[index][:] = frame_mono.copy()
+            frame = self.shared_array_rgb_list[index]
             
-            index += 1
-            index %= self.config.buffer.size
+            # set keypoint values to zero
+            # self.shared_mp_pose_list[index][:] = 0
             
-    
             mp_pose_dict = {}
-            for cam_idx, (frame, detector) in enumerate(zip(frame_rgb, mp_hand_detector_list)):
+            for cam_idx, (frame, detector) in enumerate(zip(frame, mp_hand_detector_list)):
                 
                 results = detector.process(frame)
                 
@@ -131,7 +106,7 @@ class MediaPipeEstimator(mp.Process):
             
             fps = 0.5 * fps + 0.5 * (1 / (time.time() - stt1))
             if self.verbose:
-                print(f"MP FPS: {int(fps)}")
+                print(f"               MP FPS: {int(fps)}")
             
             self.mp2ume.put((
                 index,

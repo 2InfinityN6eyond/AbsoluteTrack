@@ -25,6 +25,8 @@ class UmeTracker(mp.Process):
         self,
         config,
         shared_array_mono,
+        shared_mp_pose_array,
+        shared_ume_pose_array,
         mp2ume,
         ume2imgviz,
         stop_event,
@@ -33,6 +35,8 @@ class UmeTracker(mp.Process):
         super().__init__()
         self.config = config
         self.shared_array_mono = shared_array_mono
+        self.shared_mp_pose_array = shared_mp_pose_array
+        self.shared_ume_pose_array = shared_ume_pose_array
         self.mp2ume = mp2ume
         self.ume2imgviz = ume2imgviz
         self.stop_event = stop_event
@@ -112,6 +116,30 @@ class UmeTracker(mp.Process):
             )) for i in range(self.config.buffer.size)
         ]
         
+        # initialize mp pose shared array
+        '''
+        self.shared_mp_pose_list = [
+            np.frombuffer(
+                self.shared_mp_pose_array[i].buf, dtype=np.float32
+            ).reshape((
+                2 if self.config.is_stereo else 1,
+                self.config.media_pipe.max_num_hands,
+                self.config.media_pipe.num_keypoints,
+                3
+            )) for i in range(self.config.buffer.size)
+        ]
+        '''
+        
+        # initialize ume pose shared array
+        self.shared_ume_pose_list = [
+            np.frombuffer(
+                self.shared_ume_pose_array[i].buf, dtype=np.float32
+            ).reshape((
+                self.config.ume_tracker.max_num_hands,
+                self.config.ume_tracker.num_keypoints,
+                3
+            )) for i in range(self.config.buffer.size)
+        ]
         
         UMETRACK_ROOT = ".."
         HAND_MODEL_DATA_PATH = os.path.join(UMETRACK_ROOT, "dataset/generic_hand_model.json")
@@ -123,9 +151,7 @@ class UmeTracker(mp.Process):
         model_path = os.path.join(UMETRACK_ROOT, "pretrained_models", model_name)
         model = load_pretrained_model(model_path)
         model.eval()
-        tracker_opts = HandTrackerOpts()
-        tracker_opts.hand_ratio_in_crop = 0.5 
-        tracker = HandTracker(model, tracker_opts)
+        tracker = HandTracker(model, HandTrackerOpts())
         
         sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         serverAddressPort = ("127.0.0.1", 5052)
