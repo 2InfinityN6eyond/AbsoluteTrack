@@ -160,20 +160,7 @@ if __name__ == "__main__" :
         
         frame_left = frame[:, :IMG_WIDTH]
         frame_right = frame[:, IMG_WIDTH:]
-        
-        results_left = mp_hand_left.process(frame_left)
-        results_right = mp_hand_right.process(frame_right)
-        
-        x, y = np.meshgrid(
-            np.linspace(0, IMG_WIDTH, 21),
-            np.linspace(0, IMG_HEIGHT, 21)
-        )
-        eye_pose_arr_left = cam_left.window_to_eye(window_points_arr)
-        window_pose_reproj_arr_left = cam_left.eye_to_window(eye_pose_arr_left)
-        
-        eye_pose_arr_right = cam_right.window_to_eye(window_points_arr)
-        window_pose_reproj_arr_right = cam_right.eye_to_window(eye_pose_arr_right)
-      
+
 
         for point in window_points_arr :
             x, y = point
@@ -184,6 +171,30 @@ if __name__ == "__main__" :
             cv2.circle(frame_right, (int(x), int(y)), 2, (255, 0, 0), -1)
         
         
+        # window poinnt -> eye point
+        eye_pose_arr_left = cam_left.window_to_eye(window_points_arr)
+        eye_pose_arr_right = cam_right.window_to_eye(window_points_arr)
+        
+
+        # project eye to window without distortion
+        window_pose_undist_reproj_arr_left = cam_left.eye_to_window_undistorted(eye_pose_arr_left)
+        window_pose_undist_reproj_arr_right = cam_right.eye_to_window_undistorted(eye_pose_arr_right)
+        # plot undistorted window2eye -> undistorted eye2window
+        # for point in window_pose_undist_reproj_arr_left :
+        #     x, y = point
+        #     cv2.circle(frame_left, (int(x), int(y)), 2, (0, 255, 0), -1)
+
+        # for point in window_pose_undist_reproj_arr_right :
+        #     x, y = point
+        #     cv2.circle(frame_right, (int(x), int(y)), 2, (0, 255, 0), -1)
+
+
+
+        # project eye to window with distortion
+        window_pose_reproj_arr_left = cam_left.eye_to_window(eye_pose_arr_left)
+        window_pose_reproj_arr_right = cam_right.eye_to_window(eye_pose_arr_right)
+        
+        # plot distorted window2eye -> distorted eye2window
         for point in window_pose_reproj_arr_left :
             x, y = point
             cv2.circle(frame_left, (int(x), int(y)), 2, (0, 0, 255), -1)
@@ -192,6 +203,9 @@ if __name__ == "__main__" :
             x, y = point
             cv2.circle(frame_right, (int(x), int(y)), 2, (0, 0, 255), -1)
         
+
+      
+
         
         # draw lines from center to boundary.
         for p1, p2 in zip(p1_list, p2_list) :

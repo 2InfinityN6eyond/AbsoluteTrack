@@ -197,7 +197,7 @@ class UmeTracker(mp.Process):
             hand_pose_window_left_cam = mp_hand_pose_dict1
             hand_pose_window_right_cam = mp_hand_pose_dict2
             
-            print(f"left cam {list(hand_pose_window_left_cam.keys())}, {list(hand_pose_window_right_cam.keys())}")
+            # print(f"left cam {list(hand_pose_window_left_cam.keys())}, {list(hand_pose_window_right_cam.keys())}")
             
             crop_camera_dict = tracker.gen_crop_cameras_from_stereo_camera_with_window_hand_pose(
                 camera_left = self.cam_left,
@@ -206,10 +206,19 @@ class UmeTracker(mp.Process):
                 window_hand_pose_right = hand_pose_window_right_cam
             )
             
-            res = tracker.track_frame(
+            if len(crop_camera_dict.keys()):
+                print(
+                    [
+                        (list(crop_camera_dict[hand_idx].keys()), hand_idx) for hand_idx in crop_camera_dict.keys()
+                    ]
+                )
+
+
+            res = tracker.track_frame_analysis(
                 fisheye_stereo_input_frame, 
                 hand_model, 
-                crop_camera_dict
+                crop_camera_dict,
+                None
             )
             
             tracked_keypoints_dict = {}
