@@ -26,6 +26,8 @@ CAM_ID = 10
 
 cap = open_camera(IMAGE_WIDTH, IMAGE_HEIGHT, CAM_ID)
 
+
+
 fps = 0
 while True:
     stt = time.time()

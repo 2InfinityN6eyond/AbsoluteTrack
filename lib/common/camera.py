@@ -435,7 +435,7 @@ def read_camera_from_json(js):
 
     if model == "PinholePlane":
         cls = PinholePlaneCameraModel
-    elif model[ == "FishEye62":]
+    elif model == "FishEye62":
         cls = Fisheye62CameraModel
 
     distort_params = cls.distortion_model._fields
