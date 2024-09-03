@@ -94,7 +94,7 @@ class MediaPipeEstimator(mp.Process):
                     # In UmeTrack, RIGHT_HAND_INDEX = 1
                     # if right hand, UmeTrack flips it before processing
                     # 
-                    hand_index = 1 - handedness.classification[0].index
+                    hand_index = handedness.classification[0].index
                     hand_pose = np.array(list(map(
                         lambda l : [l.x, l.y, l.z],
                         landmark.landmark
