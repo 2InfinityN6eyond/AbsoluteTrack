@@ -24,7 +24,7 @@ class CameraConfig:
 
 @dataclass
 class BufferConfig:
-    size: int = 60
+    size: int = 100
 
 @dataclass
 class MediaPipeConfig :
@@ -56,13 +56,15 @@ class ImageVisualizer(mp.Process):
         config,
         shared_array_rgb,
         ume2imgviz,
-        stop_event
+        stop_event,
+        verbose = False
     ):
         super().__init__()
         self.config = config
         self.shared_array_rgb = shared_array_rgb
         self.ume2imgviz = ume2imgviz
         self.stop_event = stop_event
+        self.verbose = verbose
         
     def run(self):
         # initialize image shared array
@@ -79,34 +81,35 @@ class ImageVisualizer(mp.Process):
 
         
         mp_handedness_color_map = {
-            0: (255, 100, 0), # red
-            1: (100, 255, 100), # green
-        }
-        
-        ume_handedness_color_map = {
-            0: (0, 0, 255), # red
+            0: (255, 0, 0), # red
             1: (0, 255, 0), # green
         }
         
+        ume_handedness_color_map = {
+            0: (150, 100, 100), # red
+            1: (100, 150, 100), # green
+        }
         
-        fps1 = 0
-        fps2 = 0
+        
+        fps = 0
         while not self.stop_event.is_set():
-            stt1 = time.time()
-        
+            if self.ume2imgviz.empty():
+                continue
+            
+            stt = time.time()        
             (
                 index, 
                 mp_hand_pose_dict, 
                 tracked_keypoints_dict,
                 projected_keypoints_dict
             ) = self.ume2imgviz.get()
+
+            frame = self.shared_array_rgb_list[index].copy()
             
-            stt2 = time.time()
-            
-            frame = self.shared_array_rgb_list[index]
+            cv2.imshow("frame", frame[0])
+            cv2.waitKey(1)
             
             mp_pose_dict = mp_hand_pose_dict
-            
             
             for cam_idx in range(2 if self.config.is_stereo else 1):
                 img = frame[cam_idx]
@@ -119,34 +122,24 @@ class ImageVisualizer(mp.Process):
                                 img, (int(x), int(y)), 5,
                                 mp_handedness_color_map[hand_idx], -1
                             )
-                
-                
+                            
                 for hand_idx, hand_pose in projected_keypoints_dict[cam_idx].items():
                     if hand_pose.mean() > 0.1:
                         for keypoint in hand_pose:
-                            x, y, z = keypoint
+                            x, y = keypoint
                             cv2.circle(
                                 img, (int(x), int(y)), 5, 
                                 ume_handedness_color_map[hand_idx], -1
                             )
                 
-                
-                
-                # mp_pose_results_cam = mp_pose_results[cam_idx]
-                                
-                # for hand_idx, hand_keypoint in enumerate(mp_pose_results_cam):
-                #     if hand_keypoint.mean() > 0.1:
-                #         print("recorded", cam_idx, hand_idx)
-                #         for keypoint in hand_keypoint:
-                #             x, y, z = keypoint
-                #         cv2.circle(img, (int(x), int(y)), 5, (0, 0, 255), -1)
-
-                cv2.putText(img, f"FPS: {fps1:.2f}", (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 0, 255), 2)
-                cv2.imshow(f"Camera {cam_idx}", cv2.cvtColor(img, cv2.COLOR_RGB2BGR))
-                key = cv2.waitKey(1)
-            fps2 = 0.5 * fps2 + 0.5 * (1 / (time.time() - stt2))
-            fps1 = 0.5 * fps1 + 0.5 * (1 / (time.time() - stt1))
-            # print(f"FPS: {int(fps1)}, {int(fps2)}")
+                cv2.putText(img, f"FPS: {fps:.2f}", (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 0, 255), 2)
+                #cv2.imshow(f"Camera {cam_idx}", cv2.cvtColor(img, cv2.COLOR_RGB2BGR))
+            key = cv2.waitKey(1)
+            
+            fps = 0.5 * fps + 0.5 * (1 / (time.time() - stt))
+            
+            if self.verbose:
+                print(f"                                         VIS IDX {index} FPS: {int(fps)} IDX2 {self.shared_array_rgb_list[index][0, 0, 0, 2]}")
         cv2.destroyAllWindows()           
 
 if __name__ == "__main__":
@@ -202,7 +195,8 @@ if __name__ == "__main__":
         config                  = config,
         shared_array_rgb        = shared_array_rgb,
         ume2imgviz              = ume2imgviz,
-        stop_event              = stop_event
+        stop_event              = stop_event,
+        verbose                 = True
     )
 
     processes = [

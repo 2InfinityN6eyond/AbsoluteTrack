@@ -130,20 +130,21 @@ class UmeTracker(mp.Process):
         sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         serverAddressPort = ("127.0.0.1", 5052)
 
-        fps_1 = 0
-        fps_2 = 0
+        fps = 0
         while not self.stop_event.is_set():
-            stt_1 = time.time()
+            stt = time.time()
             
             if self.mp2ume.empty():
                 continue
             
             index, mp_hand_pose_dict = self.mp2ume.get()
             
-            stt_2 = time.time()
-            
             frame = self.shared_array_mono_list[index]
             # mp_pose_results = self.shared_mp_pose_list[index]
+            
+            
+            cv2.imshow("frame ume", frame[0])
+            cv2.waitKey(1)
             
             fisheye_stereo_input_frame = InputFrame(
                 views = [
@@ -160,82 +161,50 @@ class UmeTracker(mp.Process):
                 ]
             )
             
-            # hand_pose_window_left_cam = {}
-            # for hand_idx in range(2):
-            #     if mp_pose_results[0, hand_idx].mean() > 0.1:
-            #         hand_pose_window_left_cam[hand_idx] = mp_pose_results[0, hand_idx]
-            
-            # hand_pose_window_right_cam = {}
-            # for hand_idx in range(2):
-            #     if mp_pose_results[1, hand_idx].mean() > 0.1:
-            #         hand_pose_window_right_cam[hand_idx] = mp_pose_results[1, hand_idx]
-            
             hand_pose_window_left_cam = mp_hand_pose_dict[0]
             hand_pose_window_right_cam = mp_hand_pose_dict[1]
             
-            # print(f"left cam {list(hand_pose_window_left_cam.keys())}, {list(hand_pose_window_right_cam.keys())}")
-            
-            crop_camera_dict = tracker.gen_crop_cameras_from_stereo_camera_with_window_hand_pose(
-                camera_left = self.cam_left,
-                camera_right = self.cam_right,
-                window_hand_pose_left = hand_pose_window_left_cam,
-                window_hand_pose_right = hand_pose_window_right_cam
-            )
-            
-            # if len(crop_camera_dict.keys()):
-            #     print(
-            #         [
-            #             (list(crop_camera_dict[hand_idx].keys()), hand_idx) for hand_idx in crop_camera_dict.keys()
-            #         ]
-            #     )
-
-
-            res = tracker.track_frame_analysis(
-                fisheye_stereo_input_frame, 
-                hand_model, 
-                crop_camera_dict,
-                None
-            )
             
             tracked_keypoints_dict = {}
-            
-            
-            
-            '''
-            self.shared_ume_pose_list[index][:] = 0
-            for hand_idx in res.hand_poses.keys() :
-                tracked_keypoints = landmarks_from_hand_pose(
-                    hand_model, res.hand_poses[hand_idx], hand_idx
-                )
-                self.shared_ume_pose_list[index][hand_idx] = tracked_keypoints
-                tracked_keypoints_dict[hand_idx] = tracked_keypoints
-            '''
-            
-            # if 1 in tracked_keypoints_dict:
-            #     print(tracked_keypoints_dict[1].mean(axis=0).astype(np.int32))
-                            
-            
             projected_keypoints_dict = {0:{}, 1:{}}
             
-            '''
-            for cam_idx in range(2 if self.config.is_stereo else 1):
-                per_cam_projected_keypoints_dict = {}
-                for hand_idx in tracked_keypoints_dict.keys():
-                    tracked_keypoints = tracked_keypoints_dict[hand_idx]
-                    projected_keypoints = fisheye_stereo_input_frame.views[cam_idx].camera.world_to_eye(
-                        tracked_keypoints
-                    )
-                    per_cam_projected_keypoints_dict[hand_idx] = projected_keypoints
-                projected_keypoints_dict[cam_idx] = per_cam_projected_keypoints_dict
-            '''
+            
+            # crop_camera_dict = tracker.gen_crop_cameras_from_stereo_camera_with_window_hand_pose(
+            #     camera_left = self.cam_left,
+            #     camera_right = self.cam_right,
+            #     window_hand_pose_left = hand_pose_window_left_cam,
+            #     window_hand_pose_right = hand_pose_window_right_cam
+            # )
+
+            # res = tracker.track_frame_analysis(
+            #     fisheye_stereo_input_frame, 
+            #     hand_model, 
+            #     crop_camera_dict,
+            #     None
+            # )
+            
+            # for hand_idx in res.hand_poses.keys() :
+            #     tracked_keypoints = landmarks_from_hand_pose(
+            #         hand_model, res.hand_poses[hand_idx], hand_idx
+            #     )
+            #     tracked_keypoints_dict[hand_idx] = tracked_keypoints
+                           
+            # for cam_idx in range(2 if self.config.is_stereo else 1):
+            #     camera = fisheye_stereo_input_frame.views[cam_idx].camera
+            #     per_cam_projected_keypoints_dict = {}
+            #     for hand_idx in tracked_keypoints_dict.keys():
+            #         tracked_keypoints = tracked_keypoints_dict[hand_idx]
+            #         projected_keypoints = camera.eye_to_window(
+            #             camera.world_to_eye(tracked_keypoints)
+            #         )
+            #         per_cam_projected_keypoints_dict[hand_idx] = projected_keypoints
+            #     projected_keypoints_dict[cam_idx] = per_cam_projected_keypoints_dict            
             
             
-            
-            fps_2 = 0.8 * fps_2 + 0.2 * (1 / (time.time() - stt_2))
-            fps_1 = 0.8 * fps_1 + 0.2 * (1 / (time.time() - stt_1))
+            fps = 0.8 * fps + 0.2 * (1 / (time.time() - stt))
             
             if self.verbose:
-                print(f"                      UME FPS: {int(fps_1)}, {int(fps_2)}, {len(hand_pose_window_left_cam)}, {len(hand_pose_window_right_cam)}")
+                print(f"                     {index} UME FPS: {int(fps)} lenIDX2: {self.shared_array_mono_list[index][0, 0, 0]}")
             
             
             self.ume2imgviz.put((

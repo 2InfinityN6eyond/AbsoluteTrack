@@ -43,11 +43,9 @@ class ViewData:
     camera: camera.CameraModel
     camera_angle: float
 
-
 @dataclass
 class InputFrame:
     views: List[ViewData]
-
 
 @dataclass
 class HandTrackerOpts:

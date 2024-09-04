@@ -31,7 +31,6 @@ class MediaPipeEstimator(mp.Process):
         cap.set(cv2.CAP_PROP_FRAME_WIDTH, self.config.camera.image_width * (2 if self.config.is_stereo else 1))
         cap.set(cv2.CAP_PROP_FRAME_HEIGHT, self.config.camera.image_height)
         cap.set(cv2.CAP_PROP_FPS, self.config.camera.fps)
-        
                 
         # initialize image shared array
         self.shared_array_rgb_list = [
@@ -65,6 +64,9 @@ class MediaPipeEstimator(mp.Process):
         
         fps = 0
         index = 0
+        
+        idx2 = 0
+        
         while not self.stop_event.is_set():
             stt1 = time.time()
             
@@ -97,6 +99,7 @@ class MediaPipeEstimator(mp.Process):
             self.shared_array_rgb_list[index][:] = frame_rgb.copy()
             self.shared_array_mono_list[index][:] = frame_mono.copy()
             
+            
             index += 1
             index %= self.config.buffer.size
             
@@ -124,14 +127,21 @@ class MediaPipeEstimator(mp.Process):
                         
                         mp_pose_dict_per_cam[hand_index] = hand_pose
                     
-                        # self.shared_mp_pose_list[index][cam_idx, hand_index, :, :] = hand_pose
-            
                 mp_pose_dict[cam_idx] = mp_pose_dict_per_cam   
-            
             
             fps = 0.5 * fps + 0.5 * (1 / (time.time() - stt1))
             if self.verbose:
-                print(f"MP FPS: {int(fps)}")
+                
+                if self.config.is_stereo:
+                    self.shared_array_rgb_list[index][0, 0, 0, :] = idx2
+                    self.shared_array_mono_list[index][0, 0, 0] = idx2
+                    
+                    cv2.imshow("frame mp", frame_rgb[0])
+                    cv2.waitKey(1)
+                
+                    print(f"MP FPS:{int(fps)} IDX:{index} IDX2:{self.shared_array_rgb_list[index][0, 0, 0, 0]}")
+            
+                    idx2 += 1
             
             self.mp2ume.put((
                 index,
