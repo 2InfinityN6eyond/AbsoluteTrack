@@ -170,9 +170,9 @@ class HandTracker:
                 distort_coeffs = [],
                 camera_to_world_xf=np.linalg.inv(new_world_to_eye),
             )
-            crop_camera_dict_per_hand[hand_idx] = new_cam
+            crop_camera_dict_per_hand[0] = new_cam
             crop_camera_dict[hand_idx] = crop_camera_dict_per_hand
-            
+        
         camera_right_world_to_eye = np.linalg.inv(camera_right.camera_to_world_xf)
         for hand_idx, window_hand_pose in window_hand_pose_right.items():
             crop_camera_dict_per_hand = {}
@@ -209,12 +209,13 @@ class HandTracker:
                 distort_coeffs = [],
                 camera_to_world_xf=np.linalg.inv(new_world_to_eye),
             )
-            crop_camera_dict_per_hand[hand_idx] = new_cam
+            crop_camera_dict_per_hand[1] = new_cam
             if hand_idx in crop_camera_dict :
                 crop_camera_dict[hand_idx].update(crop_camera_dict_per_hand)
             else :
                 crop_camera_dict[hand_idx] = crop_camera_dict_per_hand
             
+
         return crop_camera_dict
             
 
@@ -224,7 +225,7 @@ class HandTracker:
         camera_angles: List[float],
         hand_model: HandModel,
         gt_tracking: Dict[int, SingleHandPose],
-        min_num_crops: int,
+        min_num_crops: int,r
     ) -> Dict[int, Dict[int, camera.PinholePlaneCameraModel]]:
         crop_cameras: Dict[int, Dict[int, camera.PinholePlaneCameraModel]] = {}
         if not gt_tracking:
