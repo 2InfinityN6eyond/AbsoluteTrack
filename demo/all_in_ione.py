@@ -4,6 +4,7 @@ import time
 import cv2
 import mediapipe as mp
 import numpy as np
+import socket
 
 import sys
 sys.path.append('..')
@@ -84,6 +85,9 @@ cam_right = Fisheye62CameraModel(
     distort_coeffs = distortion_coeffs_right,
     camera_to_world_xf = camera_to_world_xf_right
 )
+
+sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+serverAddressPort = ("127.0.0.1", 5052)
 
 IMG_SETTING_OPTIONS = {
     "0": (1920, 1080),
@@ -261,10 +265,22 @@ if __name__ == "__main__":
             tracked_keypoints_dict[hand_idx] = tracked_keypoints
 
         if 0 in tracked_keypoints_dict and 1 in tracked_keypoints_dict :
-            print(
-                tracked_keypoints_dict[0].mean(axis=0).astype(np.int32),
-                tracked_keypoints_dict[1].mean(axis=0).astype(np.int32),
-            )
+            # print(
+            #     tracked_keypoints_dict[0].mean(axis=0).astype(np.int32),
+            #     tracked_keypoints_dict[1].mean(axis=0).astype(np.int32),
+            # )
+            
+            content = []
+            for hand_idx in tracked_keypoints_dict.keys() :
+                data = tracked_keypoints_dict[hand_idx].copy()
+                data[:, :2] *= -1
+                content.append(str(data.flatten().astype(int).tolist()))
+            
+            content = ";".join(content)
+            print(content)
+            print()
+            
+            sock.sendto(str.encode(str(content)), serverAddressPort)
         
         projected_keypoints_dict = {}
         for cam_idx in range(len(fisheye_stereo_input_frame.views)):
@@ -277,6 +293,7 @@ if __name__ == "__main__":
                 )
                 per_cam_projected_keypoints_dict[hand_idx] = projected_keypoints
             projected_keypoints_dict[cam_idx] = per_cam_projected_keypoints_dict
+
         
         fps_inner = 0.5 * fps_inner + 0.5 * (1 / (time.time() - stt))
 
