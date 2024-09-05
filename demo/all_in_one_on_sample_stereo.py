@@ -121,8 +121,8 @@ serverAddressPort = ("127.0.0.1", 5052)
 if __name__ == "__main__":
     UMETRACK_ROOT = ".."
     
-    SAMPLE_VID_PATH = os.path.join(UMETRACK_ROOT, "sample_data/recording_00.mp4")
-    SAMPLE_LABEL_PATH = os.path.join(UMETRACK_ROOT, "sample_data/recording_00.json")
+    SAMPLE_VID_PATH = os.path.join(UMETRACK_ROOT, "sample_data/user05/recording_00.mp4")
+    SAMPLE_LABEL_PATH = os.path.join(UMETRACK_ROOT, "sample_data/user05/recording_00.json")
     
     model_name = "pretrained_weights.torch"
     model_path = os.path.join(UMETRACK_ROOT, "pretrained_models", model_name)
@@ -131,7 +131,7 @@ if __name__ == "__main__":
     model = load_pretrained_model(model_path)
     model.eval()
     tracker_opts = HandTrackerOpts()
-    tracker_opts.hand_ratio_in_crop = 0.5 
+    #tracker_opts.hand_ratio_in_crop = 0.5 
     tracker = HandTracker(model, tracker_opts)
 
     # draw hand pose
@@ -231,17 +231,17 @@ if __name__ == "__main__":
                 window_hand_pose_right = window_hand_pose_right
             )
 
-            # res = tracker.track_frame_analysis(
-            #     fisheye_stereo_input_frame, 
-            #     hand_model, 
-            #     crop_camera_dict,
-            #     None
-            # )
-            res = tracker.track_frame(    
+            res = tracker.track_frame_analysis(
                 fisheye_stereo_input_frame, 
                 hand_model, 
                 crop_camera_dict,
+                None
             )
+            # res = tracker.track_frame(    
+            #     fisheye_stereo_input_frame, 
+            #     hand_model, 
+            #     crop_camera_dict,
+            # )
             
             tracked_keypoints_dict = {}
             for hand_idx in res.hand_poses.keys() :

@@ -121,13 +121,13 @@ if __name__ == "__main__":
     UMETRACK_ROOT = ".."
     
     SAMPLE_VID_PATH = os.path.join(
-        UMETRACK_ROOT, "sample_data/user05/recording_02.mp4"
+        UMETRACK_ROOT, "sample_data/user05/recording_00.mp4"
     )
     SAMPLE_LABEL_PATH = os.path.join(
-        UMETRACK_ROOT, "sample_data/user05/recording_02.json"
+        UMETRACK_ROOT, "sample_data/user05/recording_00.json"
     )
     RESULT_FILE_PATH = os.path.join(
-        UMETRACK_ROOT, "sample_data/user05/recording_02.npy"
+        UMETRACK_ROOT, "sample_data/user05/recording_00.npy"
     )
     
     model_name = "pretrained_weights.torch"

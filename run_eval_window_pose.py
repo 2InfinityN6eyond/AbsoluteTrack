@@ -140,21 +140,6 @@ sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
 serverAddressPort = ("127.0.0.1", 5052)
 
 
-def _find_input_output_files(input_dir: str, output_dir: str, test_only: bool):
-    res_input_paths = []
-    res_output_paths = []
-    for cur_dir, _, filenames in fs.walk(input_dir):
-        if test_only and not "testing" in cur_dir:
-            continue
-        mp4_files = fnmatch.filter(filenames, "*.mp4")
-        input_full_paths = [fs.join(cur_dir, fname) for fname in mp4_files]
-        rel_paths = [f[len(input_dir):] for f in input_full_paths]
-        output_full_paths = [fs.join(output_dir, f[:-4] + ".npy") for f in rel_paths]
-        res_input_paths += input_full_paths
-        res_output_paths += output_full_paths
-    assert len(res_input_paths) == len(res_output_paths)
-    logger.info(f"Found {len(res_input_paths)} files from {input_dir}")
-    return res_input_paths, res_output_paths
 
 
 def _track_sequence(
@@ -368,18 +353,14 @@ if __name__ == '__main__':
     model_name = "pretrained_weights.torch"
     model_path = os.path.join(root, "pretrained_models", model_name)
 
-
     error_tensors = []
     input_dir = os.path.join(root, "UmeTrack_data", "raw_data", "real")
     output_dir = os.path.join(root, "tmp", "eval_results_known_skeleton", "real")
-    input_paths, output_paths = _find_input_output_files(input_dir, output_dir, test_only=True)
     pool_size = 8
     
-    # cv2.namedWindow("warped_image", cv2.WINDOW_NORMAL)
-    
     UMETRACK_ROOT = "."
-    VIDEO_PATH = os.path.join(UMETRACK_ROOT, "sample_data/user05/recording_00.mp4")
-    DATA_PATH = os.path.join(UMETRACK_ROOT, "sample_data/user05/recording_00.json")
+    VIDEO_PATH = os.path.join(UMETRACK_ROOT, "sample_data/user05/recording_02.mp4")
+    DATA_PATH = os.path.join(UMETRACK_ROOT, "sample_data/user05/recording_02.json")
     
     _track_sequence(VIDEO_PATH, DATA_PATH, model_path, override=True)
     

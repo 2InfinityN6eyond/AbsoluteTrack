@@ -176,7 +176,7 @@ if __name__ == "__main__":
     model = load_pretrained_model(model_path)
     model.eval()
     tracker_opts = HandTrackerOpts()
-    tracker_opts.hand_ratio_in_crop = 0.5 
+    # tracker_opts.hand_ratio_in_crop = 0.5
     tracker = HandTracker(model, tracker_opts)
 
     # draw hand pose
