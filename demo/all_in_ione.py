@@ -86,6 +86,24 @@ cam_right = Fisheye62CameraModel(
     camera_to_world_xf = camera_to_world_xf_right
 )
 
+MP_CONNECTION_MAP = [
+    (0, 1), (1, 2), (2, 3), (3, 4), # thumb
+    (0, 5), (5, 6), (6, 7), (7, 8), # index
+    (0, 9), (9, 10), (10, 11), (11, 12), # middle
+    (0, 13), (13, 14), (14, 15), (15, 16), # ring
+    (0, 17), (17, 18), (18, 19), (19, 20), # pinky
+    (5, 9), (9, 13), (13, 17), # palm
+]
+HAND_CONNECTION_MAP = [
+    [5, 6], [6, 7], [7, 0], # thumb
+    [5, 8], [8, 9], [9, 10], [10, 1], # index
+    [5, 11], [11, 12], [12, 13], [13, 2], # middle
+    [5, 14], [14, 15], [15, 16], [16, 3], # ring
+    [5, 17], [17, 18], [18, 19], [19, 4], # pinky
+    [8, 11], [11, 14], [14, 17]
+]
+
+
 sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
 serverAddressPort = ("127.0.0.1", 5052)
 
@@ -167,8 +185,8 @@ if __name__ == "__main__":
         1: (0, 255, 0), # GREEN
     }
     ume_handedness_color_map = {
-        0: (100, 100, 255), # RED
-        1: (100, 255, 100), # GREEN
+        0: (10, 10, 55), # RED
+        1: (10, 55, 10), # GREEN
     }
     
 
@@ -250,17 +268,17 @@ if __name__ == "__main__":
         )
 
 
-        #res = tracker.track_frame_analysis(
-        #     fisheye_stereo_input_frame, 
-        #     hand_model, 
-        #     crop_camera_dict,
-        #     None
-        # )
-        res = tracker.track_frame(    
+        res = tracker.track_frame_analysis(
             fisheye_stereo_input_frame, 
             hand_model, 
             crop_camera_dict,
+            None
         )
+        # res = tracker.track_frame(    
+        #     fisheye_stereo_input_frame, 
+        #     hand_model, 
+        #     crop_camera_dict,
+        # )
         
         tracked_keypoints_dict = {}
         for hand_idx in res.hand_poses.keys() :
@@ -305,21 +323,59 @@ if __name__ == "__main__":
             for point in hand_pose:
                 x, y, z = point
                 cv2.circle(frame_left, (int(x), int(y)), 2, mp_handedness_color_map[hand_index], -1)
-        
+        for con in MP_CONNECTION_MAP :
+            for hand_idx, hand_pose in window_hand_pose_left.items() :
+                cv2.line(
+                    frame_left, 
+                    hand_pose[con[0]][:2].astype(np.int32), 
+                    hand_pose[con[1]][:2].astype(np.int32), 
+                    mp_handedness_color_map[hand_idx],
+                    1
+                )
+
+
         for hand_index, hand_pose in window_hand_pose_right.items():
             for point in hand_pose:
                 x, y, z = point
                 cv2.circle(frame_right, (int(x), int(y)), 2, mp_handedness_color_map[hand_index], -1)
+        for con in MP_CONNECTION_MAP :
+            for hand_idx, hand_pose in window_hand_pose_right.items() :
+                cv2.line(
+                    frame_right, 
+                    hand_pose[con[0]][:2].astype(np.int32), 
+                    hand_pose[con[1]][:2].astype(np.int32), 
+                    mp_handedness_color_map[hand_idx],
+                    1
+                )
 
         # plot uume hand pose 
         for hand_index, hand_pose in projected_keypoints_dict[0].items():
             for point in hand_pose:
                 x, y = point
                 cv2.circle(frame_left, (int(x), int(y)), 2, ume_handedness_color_map[hand_index], -1)
+        for con in HAND_CONNECTION_MAP :
+            for hand_idx, hand_pose in projected_keypoints_dict[0].items() :
+                cv2.line(
+                    frame_left, 
+                    hand_pose[con[0]][:2].astype(np.int32), 
+                    hand_pose[con[1]][:2].astype(np.int32), 
+                    ume_handedness_color_map[hand_idx],
+                    2
+                )
+
         for hand_index, hand_pose in projected_keypoints_dict[1].items():
             for point in hand_pose:
                 x, y = point
                 cv2.circle(frame_right, (int(x), int(y)), 2, ume_handedness_color_map[hand_index], -1)
+        for con in HAND_CONNECTION_MAP :
+            for hand_idx, hand_pose in projected_keypoints_dict[1].items() :
+                cv2.line(
+                    frame_right, 
+                    hand_pose[con[0]][:2].astype(np.int32), 
+                    hand_pose[con[1]][:2].astype(np.int32), 
+                    ume_handedness_color_map[hand_idx],
+                    2
+                )
 
 
 

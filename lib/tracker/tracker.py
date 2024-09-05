@@ -225,7 +225,7 @@ class HandTracker:
         camera_angles: List[float],
         hand_model: HandModel,
         gt_tracking: Dict[int, SingleHandPose],
-        min_num_crops: int,r
+        min_num_crops: int
     ) -> Dict[int, Dict[int, camera.PinholePlaneCameraModel]]:
         crop_cameras: Dict[int, Dict[int, camera.PinholePlaneCameraModel]] = {}
         if not gt_tracking:
