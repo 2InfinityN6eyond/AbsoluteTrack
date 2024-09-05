@@ -123,6 +123,8 @@ class SyncedImagePoseStream:
             multi_view_images = raw_mono.reshape(
                 raw_mono.shape[0], len(self._hand_pose_labels.cameras), -1
             )
+            
+            
             invalid_camera_to_world = (
                 self._hand_pose_labels.camera_to_world_transforms[frame_idx].sum() == 0
             )

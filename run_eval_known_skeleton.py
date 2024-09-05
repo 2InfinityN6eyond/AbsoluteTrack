@@ -74,6 +74,10 @@ def _track_sequence(
             gt_tracking,
             min_num_crops=1,
         )
+        
+        print(input_frame.views[0].image.shape)
+        
+        
         res = tracker.track_frame(input_frame, hand_model, crop_cameras)
 
         for hand_idx in res.hand_poses.keys():

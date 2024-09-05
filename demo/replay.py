@@ -120,9 +120,15 @@ serverAddressPort = ("127.0.0.1", 5052)
 if __name__ == "__main__":
     UMETRACK_ROOT = ".."
     
-    SAMPLE_VID_PATH = os.path.join(UMETRACK_ROOT, "sample_data/user05/recording_00.mp4")
-    SAMPLE_LABEL_PATH = os.path.join(UMETRACK_ROOT, "sample_data/user05/recording_00.json")
-    RESULT_FILE_PATH = os.path.join(UMETRACK_ROOT, "sample_data/user05/recording_00.npy")
+    SAMPLE_VID_PATH = os.path.join(
+        UMETRACK_ROOT, "sample_data/user05/recording_02.mp4"
+    )
+    SAMPLE_LABEL_PATH = os.path.join(
+        UMETRACK_ROOT, "sample_data/user05/recording_02.json"
+    )
+    RESULT_FILE_PATH = os.path.join(
+        UMETRACK_ROOT, "sample_data/user05/recording_02.npy"
+    )
     
     model_name = "pretrained_weights.torch"
     model_path = os.path.join(UMETRACK_ROOT, "pretrained_models", model_name)
@@ -252,15 +258,19 @@ if __name__ == "__main__":
                 )
                 tracked_keypoints_dict[hand_idx] = tracked_keypoints
 
-            if 0 in tracked_keypoints_dict and 1 in tracked_keypoints_dict :
+            res_keypoints_dict = {}
+            for hand_idx in range(2) :
+                res_keypoints_dict[hand_idx] = results['tracked_keypoints'][hand_idx, frame_idx]
+            
+            if 0 in res.hand_poses and 1 in res.hand_poses :
                 # print(
                 #     tracked_keypoints_dict[0].mean(axis=0).astype(np.int32),
                 #     tracked_keypoints_dict[1].mean(axis=0).astype(np.int32),
                 # )
                 
                 content = []
-                for hand_idx in tracked_keypoints_dict.keys() :
-                    tracked_data = tracked_keypoints_dict[hand_idx].copy()
+                for hand_idx in res_keypoints_dict.keys() :
+                    tracked_data = res_keypoints_dict[hand_idx].copy()
                     tracked_data[:, :2] *= -1
                     content.append(str(tracked_data.flatten().astype(int).tolist()))
                 

@@ -297,6 +297,9 @@ if __name__ == "__main__":
             for hand_idx in tracked_keypoints_dict.keys() :
                 data = tracked_keypoints_dict[hand_idx].copy()
                 data[:, :2] *= -1
+                FLIP_X = True
+                if FLIP_X :
+                    data[:, 0] *= -1
                 content.append(str(data.flatten().astype(int).tolist()))
             
             content = ";".join(content)
