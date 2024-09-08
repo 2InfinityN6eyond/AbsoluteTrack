@@ -1,25 +1,25 @@
-import multiprocessing as mp
 import numpy as np
 import cv2
 import time
+import multiprocessing as mp
+from multiprocessing import shared_memory
 
 import mediapipe
-
 
 class MediaPipeEstimator(mp.Process):
     def __init__(
         self,
         config,
-        shared_array_rgb,
-        shared_array_mono,
+        shared_array_rgb_names,
+        shared_array_mono_names,
         mp2ume,
         stop_event,
         verbose = False
     ):
         super().__init__()
         self.config = config
-        self.shared_array_rgb = shared_array_rgb
-        self.shared_array_mono = shared_array_mono
+        self.shared_array_rgb_names = shared_array_rgb_names
+        self.shared_array_mono_names = shared_array_mono_names
         self.mp2ume = mp2ume
         self.stop_event = stop_event
         self.verbose = verbose
@@ -33,24 +33,59 @@ class MediaPipeEstimator(mp.Process):
         cap.set(cv2.CAP_PROP_FPS, self.config.camera.fps)
                 
         # initialize image shared array
+        # self.shared_array_rgb_list = [
+        #     np.frombuffer(
+        #         self.shared_array_rgb[i].buf, dtype=np.uint8
+        #     ).reshape((
+        #         2 if self.config.is_stereo else 1,
+        #         self.config.camera.image_height,
+        #         self.config.camera.image_width,
+        #         3
+        #     )) for i in range(self.config.buffer.size)
+        # ]
+        # self.shared_array_mono_list = [
+        #     np.frombuffer(
+        #         self.shared_array_mono[i].buf, dtype=np.uint8
+        #     ).reshape((
+        #         2 if self.config.is_stereo else 1,
+        #         self.config.camera.image_height,
+        #         self.config.camera.image_width,
+        #     )) for i in range(self.config.buffer.size)
+        # ]
+
+        self.rgb_shm_list = [
+            shared_memory.SharedMemory(
+                name = name
+            ) for name in self.shared_array_rgb_names
+        ]
         self.shared_array_rgb_list = [
-            np.frombuffer(
-                self.shared_array_rgb[i].buf, dtype=np.uint8
-            ).reshape((
-                2 if self.config.is_stereo else 1,
-                self.config.camera.image_height,
-                self.config.camera.image_width,
-                3
-            )) for i in range(self.config.buffer.size)
+            np.ndarray(
+                (
+                    2 if self.config.is_stereo else 1,
+                    self.config.camera.image_height,
+                    self.config.camera.image_width,
+                    3
+                ),
+                dtype=np.uint8,
+                buffer=shm.buf
+            ) for shm in self.rgb_shm_list
+        ]
+
+        self.mono_shm_list = [
+            shared_memory.SharedMemory(
+                name = name
+            ) for name in self.shared_array_mono_names
         ]
         self.shared_array_mono_list = [
-            np.frombuffer(
-                self.shared_array_mono[i].buf, dtype=np.uint8
-            ).reshape((
-                2 if self.config.is_stereo else 1,
-                self.config.camera.image_height,
-                self.config.camera.image_width,
-            )) for i in range(self.config.buffer.size)
+            np.ndarray(
+                (
+                    2 if self.config.is_stereo else 1, 
+                    self.config.camera.image_height, 
+                    self.config.camera.image_width
+                ),
+                dtype=np.uint8,
+                buffer=shm.buf
+            ) for shm in self.mono_shm_list
         ]
         
         mp_hands = mediapipe.solutions.hands

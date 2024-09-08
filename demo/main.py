@@ -1,37 +1,40 @@
-import multiprocessing as mp
-import numpy as np
-import cv2
-import tyro
 import time
-
+import tyro
+import cv2
+import numpy as np
 from dataclasses import dataclass
+
+import multiprocessing as mp
 from multiprocessing import shared_memory
-from multiprocessing import Event, Condition
-from multiprocessing import Manager
 
-import mediapipe
 
+from media_pipe_estimator import MediaPipeEstimator
 from ume_tracker import UmeTracker
-from mediapipe_estimator import MediaPipeEstimator
+from image_visualizer import ImageVisualizer
+
+
+
+
 @dataclass
 class CameraConfig:
+    n_views: int = 2
+    fps: int = 30  # Frames per second for camera
     image_height: int = 480
     image_width: int = 640
-    fps: int = 30  # Frames per second for camera
-    camera_index: int = 0  # Default camera index
+    cv_camera_index: int = 0  # Default camera index
     flip_horizontal: bool = False
     flip_vertical: bool = False
 
 @dataclass
 class BufferConfig:
-    size: int = 100
+    size: int = 6
 
 @dataclass
 class MediaPipeConfig :
     max_num_hands: int = 2
     model_complexity: int = 1
-    min_detection_confidence: float = 0.5
-    min_tracking_confidence: float = 0.5
+    min_detection_confidence: float = 0.3
+    min_tracking_confidence: float = 0.3
     
     num_keypoints: int = 21
     
@@ -42,7 +45,6 @@ class UmeTrackerConfig:
     
 @dataclass
 class Config:
-    is_stereo: bool = True
     camera: CameraConfig = CameraConfig()
     buffer: BufferConfig = BufferConfig()
     media_pipe: MediaPipeConfig = MediaPipeConfig()
@@ -50,174 +52,176 @@ class Config:
 
 
 
-class ImageVisualizer(mp.Process):
+class CameraReader(mp.Process):
     def __init__(
         self,
         config,
-        shared_array_rgb,
-        ume2imgviz,
+        rgb_frames_shm_name_list,
+        mono_frames_shm_name_list,
+        cam2mp,
         stop_event,
         verbose = False
     ):
         super().__init__()
         self.config = config
-        self.shared_array_rgb = shared_array_rgb
-        self.ume2imgviz = ume2imgviz
+        self.rgb_frames_shm_name_list = rgb_frames_shm_name_list
+        self.mono_frames_shm_name_list = mono_frames_shm_name_list
+        self.cam2mp = cam2mp
         self.stop_event = stop_event
         self.verbose = verbose
         
+        
     def run(self):
-        # initialize image shared array
-        self.shared_array_rgb_list = [
-            np.frombuffer(
-                self.shared_array_rgb[i].buf, dtype=np.uint8
-            ).reshape((
-                2 if self.config.is_stereo else 1, 
-                self.config.camera.image_height, 
-                self.config.camera.image_width,
-                3
-            )) for i in range(self.config.buffer.size)
+        self.rgb_frames_shm_list = [
+            shared_memory.SharedMemory(
+                name = shm_name
+            ) for shm_name in self.rgb_frames_shm_name_list
+        ]
+        self.rgb_frames_array_list = [
+            np.ndarray(
+                shape = (
+                    self.config.camera.n_views,
+                    self.config.camera.image_height,
+                    self.config.camera.image_width,
+                    3
+                ),
+                dtype = np.uint8,
+                buffer = shm.buf
+            ) for shm in self.rgb_frames_shm_list
         ]
 
+        self.mono_frames_shm_list = [
+            shared_memory.SharedMemory(
+                name = shm_name
+            ) for shm_name in self.mono_frames_shm_name_list
+        ]
+        self.mono_frames_array_list = [
+            np.ndarray(
+                shape = (
+                    self.config.camera.n_views,
+                    self.config.camera.image_height,
+                    self.config.camera.image_width
+                ),
+                dtype = np.uint8,
+                buffer = shm.buf
+            ) for shm in self.mono_frames_shm_list
+        ]
         
-        mp_handedness_color_map = {
-            0: (255, 0, 0), # red
-            1: (0, 255, 0), # green
-        }
-        
-        ume_handedness_color_map = {
-            0: (150, 100, 100), # red
-            1: (100, 150, 100), # green
-        }
-        
-        
-        fps = 0
-        while not self.stop_event.is_set():
-            if self.ume2imgviz.empty():
-                continue
-            
-            stt = time.time()        
-            (
-                index, 
-                mp_hand_pose_dict, 
-                tracked_keypoints_dict,
-                projected_keypoints_dict
-            ) = self.ume2imgviz.get()
+        cap = cv2.VideoCapture(self.config.camera.cv_camera_index)
+        cap.set(cv2.CAP_PROP_FRAME_WIDTH, self.config.camera.image_width * self.config.camera.n_views)
+        cap.set(cv2.CAP_PROP_FRAME_HEIGHT, self.config.camera.image_height)
+        cap.set(cv2.CAP_PROP_FPS, self.config.camera.fps)
 
-            frame = self.shared_array_rgb_list[index].copy()
-            
-            cv2.imshow("frame", frame[0])
-            cv2.waitKey(1)
-            
-            mp_pose_dict = mp_hand_pose_dict
-            
-            for cam_idx in range(2 if self.config.is_stereo else 1):
-                img = frame[cam_idx]
-            
-                for hand_idx, hand_pose in mp_pose_dict[cam_idx].items():
-                    if hand_pose.mean() > 0.1:
-                        for keypoint in hand_pose:
-                            x, y, z = keypoint
-                            cv2.circle(
-                                img, (int(x), int(y)), 5,
-                                mp_handedness_color_map[hand_idx], -1
-                            )
-                            
-                for hand_idx, hand_pose in projected_keypoints_dict[cam_idx].items():
-                    if hand_pose.mean() > 0.1:
-                        for keypoint in hand_pose:
-                            x, y = keypoint
-                            cv2.circle(
-                                img, (int(x), int(y)), 5, 
-                                ume_handedness_color_map[hand_idx], -1
-                            )
+        index = 0
+        while not self.stop_event.is_set():
+            ret, multiview_frame = cap.read()
+            if not ret:
+                continue
+
+            multiview_frame_rgb = cv2.cvtColor(multiview_frame, cv2.COLOR_BGR2RGB)
+            multiview_frame_mono = cv2.cvtColor(multiview_frame, cv2.COLOR_BGR2GRAY)
+
+            for view_idx in range(self.config.camera.n_views):
+                self.rgb_frames_array_list[index][view_idx][:] = multiview_frame_rgb[
+                    :, 
+                    view_idx * self.config.camera.image_width : (view_idx + 1) * self.config.camera.image_width
+                ]
+                self.mono_frames_array_list[index][view_idx][:] = multiview_frame_mono[
+                    :, 
+                    view_idx * self.config.camera.image_width : (view_idx + 1) * self.config.camera.image_width
+                ]
                 
-                cv2.putText(img, f"FPS: {fps:.2f}", (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 0, 255), 2)
-                #cv2.imshow(f"Camera {cam_idx}", cv2.cvtColor(img, cv2.COLOR_RGB2BGR))
-            key = cv2.waitKey(1)
-            
-            fps = 0.5 * fps + 0.5 * (1 / (time.time() - stt))
-            
-            if self.verbose:
-                print(f"                                         VIS IDX {index} FPS: {int(fps)} IDX2 {self.shared_array_rgb_list[index][0, 0, 0, 2]}")
-        cv2.destroyAllWindows()           
+            self.cam2mp.put((index))
+
+            index += 1
+            index %= self.config.buffer.size
+
+
 
 if __name__ == "__main__":
-    # Use tyro to parse command-line arguments into Config
     config = tyro.cli(Config)
 
-    # Create shared memory for the RGB image 
-    shared_array_rgb = [
+    rgb_frames_shm_list = [
         shared_memory.SharedMemory(
-            create=True, size=np.prod((
-                2 if config.is_stereo else 1,
-                config.camera.image_height,
-                config.camera.image_width,
+            create = True,
+            size = np.prod((
+                config.camera.n_views, 
+                config.camera.image_height, 
+                config.camera.image_width, 
                 3
             ))
         ) for _ in range(config.buffer.size)
     ]
+    rgb_frames_shm_name_list = [
+        shm.name for shm in rgb_frames_shm_list
+    ]
     
-    # Create shared memory for the monochrome images
-    shared_array_mono = [
+    mono_frames_shm_list = [
         shared_memory.SharedMemory(
-            create=True, size=np.prod((
-                2 if config.is_stereo else 1,
+            create = True,
+            size = np.prod((
+                config.camera.n_views,
                 config.camera.image_height,
-                config.camera.image_width,
+                config.camera.image_width
             ))
         ) for _ in range(config.buffer.size)
     ]
+    mono_frames_shm_name_list = [
+        shm.name for shm in mono_frames_shm_list
+    ]
     
-    stop_event = mp.Event()
-    
+    cam2mp = mp.Queue()
     mp2ume = mp.Queue()
-    ume2imgviz = mp.Queue()
-    
-    media_pipe_estimator = MediaPipeEstimator(
-        config                  = config,
-        shared_array_rgb        = shared_array_rgb,
-        shared_array_mono       = shared_array_mono,
-        mp2ume                  = mp2ume,
-        stop_event              = stop_event,
-        verbose                 = True
+    ume2vz = mp.Queue()
+
+
+    stop_event = mp.Event()
+
+    camera_reader = CameraReader(
+        config = config,
+        rgb_frames_shm_name_list = rgb_frames_shm_name_list,
+        mono_frames_shm_name_list = mono_frames_shm_name_list,
+        cam2mp = cam2mp,
+        stop_event = stop_event,
+        verbose = False
+    )
+    media_pipe_estimator = MediaPipeEstimator(  
+        config = config,
+        rgb_frames_shm_name_list = rgb_frames_shm_name_list,
+        cam2mp = cam2mp,
+        mp2ume = mp2ume,
+        stop_event = stop_event,
+        verbose = False
     )
     ume_tracker = UmeTracker(
-        config                  = config, 
-        shared_array_mono       = shared_array_mono,
-        mp2ume                  = mp2ume,
-        ume2imgviz              = ume2imgviz,
-        stop_event              = stop_event,
-        verbose                 = True
+        config = config,
+        shm_name_list = mono_frames_shm_name_list,
+        mp2ume = mp2ume,
+        ume2vz = ume2vz,
+        stop_event = stop_event,
+        verbose = False
     )
-    
-    img_visualizer = ImageVisualizer(
-        config                  = config,
-        shared_array_rgb        = shared_array_rgb,
-        ume2imgviz              = ume2imgviz,
-        stop_event              = stop_event,
-        verbose                 = True
+    image_visualizer = ImageVisualizer(
+        config = config,
+        shared_array_rgb_names = rgb_frames_shm_name_list,
+        ume2imgviz = ume2vz,
+        stop_event = stop_event,
+        verbose = False
     )
 
-    processes = [
-        img_visualizer,
-        ume_tracker,
-        media_pipe_estimator,
-    ]
+    processes = [image_visualizer, ume_tracker, media_pipe_estimator, camera_reader]
+    
+
     for p in processes:
         p.start()
-
+    
     try:
-        while True:
+        while True :
             continue
-            if cv2.waitKey(1) & 0xFF == ord('q'):
-                break
     finally:
-        stop_event.set()
         for p in processes:
             p.join()
-
-    # Clean up shared memory
-    for shm in shared_array_rgb + shared_array_mono:
-        shm.close()
-        shm.unlink()
+        for shm in rgb_frames_shm_list + mono_frames_shm_list:
+            shm.close()
+            shm.unlink()
+        

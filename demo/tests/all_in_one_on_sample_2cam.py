@@ -121,8 +121,10 @@ serverAddressPort = ("127.0.0.1", 5052)
 if __name__ == "__main__":
     UMETRACK_ROOT = ".."
     
-    SAMPLE_VID_PATH = os.path.join(UMETRACK_ROOT, "sample_data/user05/recording_02.mp4")
-    SAMPLE_LABEL_PATH = os.path.join(UMETRACK_ROOT, "sample_data/user05/recording_02.json")
+
+    VID_NAME = "recording_00"
+    SAMPLE_VID_PATH = os.path.join(UMETRACK_ROOT, "sample_data/user05/", VID_NAME + ".mp4")
+    SAMPLE_LABEL_PATH = os.path.join(UMETRACK_ROOT, "sample_data/user05/", VID_NAME + ".json")
     
     model_name = "pretrained_weights.torch"
     model_path = os.path.join(UMETRACK_ROOT, "pretrained_models", model_name)
@@ -206,7 +208,8 @@ if __name__ == "__main__":
                 ), f"Cameras are not tracked, expecting no ground truth tracking!"
 
             views = []
-            for cam_idx in range(0, len(data.cameras)):
+            # for cam_idx in range(0, len(data.cameras)):
+            for cam_idx in [1, 2] :
                 cur_camera = data.cameras[cam_idx].copy(
                     camera_to_world_xf=data.camera_to_world_transforms[frame_idx, cam_idx]
                 )
@@ -221,20 +224,29 @@ if __name__ == "__main__":
 
             input_frame = InputFrame(views=views)
 
-
             crop_camera_dict = tracker.gen_crop_cameras(
                 [view.camera for view in input_frame.views],
-                data.camera_angles,
+                [view.camera_angle for view in input_frame.views],
+                # data.camera_angles,
+                # [input_frame.views[1].camera, input_frame.views[2].camera],
+                # [0, 0],
                 hand_model,
                 gt_tracking,
                 min_num_crops=1,
             )
             
-            res = tracker.track_frame(    
+            res = tracker.track_frame_analysis(
                 input_frame, 
                 hand_model, 
                 crop_camera_dict,
+                None
             )
+
+            # res = tracker.track_frame(    
+            #     input_frame, 
+            #     hand_model, 
+            #     crop_camera_dict,
+            # )
             
             tracked_keypoints_dict = {}
             for hand_idx in res.hand_poses.keys() :
@@ -276,7 +288,7 @@ if __name__ == "__main__":
 
             for cam_idx, view in enumerate(input_frame.views) :
                 camera = view.camera
-                image = multi_view_images_bgr[cam_idx]
+                image = cv2.cvtColor(view.image, cv2.COLOR_GRAY2BGR)
                 cv2.putText(image, str(frame_idx), (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 0, 255), 2)
                 cv2.putText(image, str(fps_inner), (10, 60), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 0, 255), 2)
                 # plot gt hand pose

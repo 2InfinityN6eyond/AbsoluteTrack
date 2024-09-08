@@ -36,7 +36,7 @@ while True:
     cv2.imshow('frame', frame)
     
     fps = 0.5 * fps + 0.5 * (1 / (time.time() - stt))
-    print(frame.shape, fps)
+    print(frame.shape, fps, cap.get(cv2.CAP_PROP_FPS))
 
     if cv2.waitKey(1) & 0xFF == ord('q'):
         break

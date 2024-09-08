@@ -15,6 +15,7 @@ from typing import List
 import sys
 sys.path.append('..')
 
+
 import lib.data_utils.fs as fs
 from lib.tracker.tracking_result import SingleHandPose
 from lib.tracker.perspective_crop import landmarks_from_hand_pose
@@ -120,15 +121,9 @@ serverAddressPort = ("127.0.0.1", 5052)
 if __name__ == "__main__":
     UMETRACK_ROOT = ".."
     
-    SAMPLE_VID_PATH = os.path.join(
-        UMETRACK_ROOT, "sample_data/user05/recording_00.mp4"
-    )
-    SAMPLE_LABEL_PATH = os.path.join(
-        UMETRACK_ROOT, "sample_data/user05/recording_00.json"
-    )
-    RESULT_FILE_PATH = os.path.join(
-        UMETRACK_ROOT, "sample_data/user05/recording_00.npy"
-    )
+    VID_NAME = "recording_00"
+    SAMPLE_VID_PATH = os.path.join(UMETRACK_ROOT, "sample_data/user05/", VID_NAME + ".mp4")
+    SAMPLE_LABEL_PATH = os.path.join(UMETRACK_ROOT, "sample_data/user05/", VID_NAME + ".json")
     
     model_name = "pretrained_weights.torch"
     model_path = os.path.join(UMETRACK_ROOT, "pretrained_models", model_name)
@@ -137,7 +132,7 @@ if __name__ == "__main__":
     model = load_pretrained_model(model_path)
     model.eval()
     tracker_opts = HandTrackerOpts()
-    tracker_opts.hand_ratio_in_crop = 0.5 
+    #tracker_opts.hand_ratio_in_crop = 0.5 
     tracker = HandTracker(model, tracker_opts)
 
     # draw hand pose
@@ -149,10 +144,6 @@ if __name__ == "__main__":
         0: (10, 10, 55), # RED
         1: (10, 55, 10), # GREEN
     }
-    result_handedness_color_map = {
-        0: (200, 200, 255), # RED
-        1: (200, 255, 200), # GREEN
-    }
 
     while True :
 
@@ -163,8 +154,6 @@ if __name__ == "__main__":
 
         data = _load_hand_pose_labels(SAMPLE_LABEL_PATH)
         hand_model = data.hand_model
-
-        results = np.load(RESULT_FILE_PATH, allow_pickle=True)
 
         fps_outer = 0
         fps_inner = 0
@@ -182,6 +171,12 @@ if __name__ == "__main__":
                 camera_to_world_xf=data.camera_to_world_transforms[frame_idx, 2]
             )
 
+            frame_left_bgr = frame_stereo[:, frame_width : 2*frame_width].copy()
+            frame_right_bgr = frame_stereo[:, frame_width*2 : frame_width*3].copy()
+
+            frame_left_mono = cv2.cvtColor(frame_left_bgr, cv2.COLOR_BGR2GRAY)
+            frame_right_mono = cv2.cvtColor(frame_right_bgr, cv2.COLOR_BGR2GRAY)
+
             gt_tracking = {}
             for hand_idx in range(0, 2):
                 if data.hand_confidences[frame_idx, hand_idx] > 0:
@@ -191,62 +186,60 @@ if __name__ == "__main__":
                         hand_confidence=data.hand_confidences[frame_idx, hand_idx]
                     )
 
-
-            multi_view_images_bgr = np.array([
-                frame_stereo[:, :frame_width, :],
-                frame_stereo[:, frame_width:2*frame_width, :],
-                frame_stereo[:, 2*frame_width:3*frame_width, :],
-                frame_stereo[:, 3*frame_width:, :],
-            ])
-
-            multi_view_images_mono = np.array([
-                frame_stereo[:, :frame_width, 0],
-                frame_stereo[:, frame_width:2*frame_width, 0],
-                frame_stereo[:, 2*frame_width:3*frame_width, 0],
-                frame_stereo[:, 3*frame_width:, 0],
-            ])
-
-            invalid_camera_to_world = (
-                data.camera_to_world_transforms[frame_idx].sum() == 0
-            )
-            if invalid_camera_to_world:
-                assert (
-                    not gt_tracking
-                ), f"Cameras are not tracked, expecting no ground truth tracking!"
-
-            views = []
-            for cam_idx in range(0, len(data.cameras)):
-                cur_camera = data.cameras[cam_idx].copy(
-                    camera_to_world_xf=data.camera_to_world_transforms[frame_idx, cam_idx]
+            window_hand_pose_left = {}
+            for hand_idx in range(0, 2):
+                keypoints_world = landmarks_from_hand_pose(
+                    hand_model,
+                    gt_tracking[hand_idx],
+                    hand_idx
+                )
+                window_hand_pose_left[hand_idx] = cam_left.eye_to_window(
+                    cam_left.world_to_eye(keypoints_world)
                 )
 
-                views.append(
+            window_hand_pose_right = {}
+            for hand_idx in range(0, 2):
+                keypoints_world = landmarks_from_hand_pose(
+                    hand_model,
+                    gt_tracking[hand_idx],
+                    hand_idx
+                )
+                window_hand_pose_right[hand_idx] = cam_right.eye_to_window(
+                    cam_right.world_to_eye(keypoints_world)
+                )
+
+                
+            
+            fisheye_stereo_input_frame = InputFrame(
+                views = [
                     ViewData(
-                        image=multi_view_images_mono[cam_idx],
-                        camera=cur_camera,
-                        camera_angle=data.camera_angles[cam_idx],
+                        image = frame_left_mono,
+                        camera = cam_left,
+                        camera_angle = 0,
+                    ),
+                    ViewData(
+                        image = frame_right_mono,
+                        camera = cam_right,
+                        camera_angle = 0,
                     )
-                )
-
-            input_frame = InputFrame(views=views)
-
-
-            crop_camera_dict = tracker.gen_crop_cameras(
-                [view.camera for view in input_frame.views],
-                data.camera_angles,
-                hand_model,
-                gt_tracking,
-                min_num_crops=1,
+                ]
             )
 
-            # res = tracker.track_frame_analysis(
-            #     fisheye_stereo_input_frame, 
-            #     hand_model, 
-            #     crop_camera_dict,
-            #     None
-            # )
+            crop_camera_dict = tracker.gen_crop_cameras_from_stereo_camera_with_window_hand_pose(
+                camera_left = cam_left,
+                camera_right = cam_right,
+                window_hand_pose_left = window_hand_pose_left,
+                window_hand_pose_right = window_hand_pose_right
+            )
+
+            res = tracker.track_frame_analysis(
+                fisheye_stereo_input_frame, 
+                hand_model, 
+                crop_camera_dict,
+                None
+            )
             res = tracker.track_frame(    
-                input_frame, 
+                fisheye_stereo_input_frame, 
                 hand_model, 
                 crop_camera_dict,
             )
@@ -258,19 +251,15 @@ if __name__ == "__main__":
                 )
                 tracked_keypoints_dict[hand_idx] = tracked_keypoints
 
-            res_keypoints_dict = {}
-            for hand_idx in range(2) :
-                res_keypoints_dict[hand_idx] = results['tracked_keypoints'][hand_idx, frame_idx]
-            
-            if 0 in res.hand_poses and 1 in res.hand_poses :
+            if 0 in tracked_keypoints_dict and 1 in tracked_keypoints_dict :
                 # print(
                 #     tracked_keypoints_dict[0].mean(axis=0).astype(np.int32),
                 #     tracked_keypoints_dict[1].mean(axis=0).astype(np.int32),
                 # )
                 
                 content = []
-                for hand_idx in res_keypoints_dict.keys() :
-                    tracked_data = res_keypoints_dict[hand_idx].copy()
+                for hand_idx in tracked_keypoints_dict.keys() :
+                    tracked_data = tracked_keypoints_dict[hand_idx].copy()
                     tracked_data[:, :2] *= -1
                     content.append(str(tracked_data.flatten().astype(int).tolist()))
                 
@@ -279,8 +268,8 @@ if __name__ == "__main__":
                 sock.sendto(str.encode(str(content)), serverAddressPort)
             
             projected_keypoints_dict = {}
-            for cam_idx in range(len(input_frame.views)):
-                camera = input_frame.views[cam_idx].camera
+            for cam_idx in range(len(fisheye_stereo_input_frame.views)):
+                camera = fisheye_stereo_input_frame.views[cam_idx].camera
                 per_cam_projected_keypoints_dict = {}
                 for hand_idx in tracked_keypoints_dict.keys():
                     tracked_keypoints = tracked_keypoints_dict[hand_idx]
@@ -293,79 +282,79 @@ if __name__ == "__main__":
             
             fps_inner = 0.5 * fps_inner + 0.5 * (1 / (time.time() - stt))
 
-            # cv2.putText(frame_left_bgr, str(frame_idx), (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 0, 255), 2)
-            # cv2.putText(frame_left_bgr, str(fps_inner), (10, 60), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 0, 255), 2)
-            # cv2.putText(frame_right_bgr, str(frame_idx), (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 0, 255), 2)
-            # cv2.putText(frame_right_bgr, str(fps_inner), (10, 60), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 0, 255), 2)
+            cv2.putText(frame_left_bgr, str(frame_idx), (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 0, 255), 2)
+            cv2.putText(frame_left_bgr, str(fps_inner), (10, 60), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 0, 255), 2)
+            cv2.putText(frame_right_bgr, str(frame_idx), (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 0, 255), 2)
+            cv2.putText(frame_right_bgr, str(fps_inner), (10, 60), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 0, 255), 2)
 
-            for cam_idx, view in enumerate(input_frame.views) :
-                camera = view.camera
-                image = multi_view_images_bgr[cam_idx]
-                cv2.putText(image, str(frame_idx), (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 0, 255), 2)
-                cv2.putText(image, str(fps_inner), (10, 60), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 0, 255), 2)
-                # plot gt hand pose
-                for hand_idx in gt_tracking.keys() :
-                    keypoints_world = landmarks_from_hand_pose(
-                        hand_model, gt_tracking[hand_idx], hand_idx
+            # plot gt hand pose
+            for hand_index, hand_pose in window_hand_pose_left.items():
+                for point in hand_pose:
+                    x, y = point
+                    cv2.circle(frame_left_bgr, (int(x), int(y)), 1, gt_handedness_color_map[hand_index], -1)
+
+            for hand_index, hand_pose in window_hand_pose_right.items():
+                for point in hand_pose:
+                    x, y = point
+                    cv2.circle(frame_right_bgr, (int(x), int(y)), 2, gt_handedness_color_map[hand_index], -1)
+            
+            # plot gt connection
+            for con in HAND_CONNECTION_MAP :
+                for hand_idx, hand_pose in window_hand_pose_left.items() :
+                    cv2.line(
+                        frame_left_bgr, 
+                        hand_pose[con[0]].astype(np.int32), 
+                        hand_pose[con[1]].astype(np.int32), 
+                        gt_handedness_color_map[hand_idx],
+                        1
                     )
-                    keypoints_window = camera.eye_to_window(camera.world_to_eye(keypoints_world))
-                    
-                    for point in keypoints_window :
-                        x, y = point
-                        cv2.circle(image, (int(x), int(y)), 2, gt_handedness_color_map[hand_idx], -1)
-
-                    for con in HAND_CONNECTION_MAP :
-                        cv2.line(
-                            image, 
-                            keypoints_window[con[0]].astype(np.int32), 
-                            keypoints_window[con[1]].astype(np.int32), 
-                            gt_handedness_color_map[hand_idx],
-                            1
-                        )
-
-                # plot umetrack hand pose
-                for hand_idx in projected_keypoints_dict[cam_idx].keys() :
-                    keypoints_window = projected_keypoints_dict[cam_idx][hand_idx]
-                    for point in keypoints_window :
-                        x, y = point
-                        cv2.circle(image, (int(x), int(y)), 2, ume_handedness_color_map[hand_idx], -1)
-
-                    for con in HAND_CONNECTION_MAP :
-                        cv2.line(
-                            image,
-                            keypoints_window[con[0]].astype(np.int32),
-                            keypoints_window[con[1]].astype(np.int32),
-                            ume_handedness_color_map[hand_idx],
-                            2
-                        )
+                for hand_idx, hand_pose in window_hand_pose_right.items() :
+                    cv2.line(
+                        frame_right_bgr, 
+                        hand_pose[con[0]].astype(np.int32), 
+                        hand_pose[con[1]].astype(np.int32), 
+                        gt_handedness_color_map[hand_idx],
+                        1
+                    )
 
 
-                # plot result
-                for hand_idx in range(2) :
-                    
-                    saved_hand_data = results['tracked_keypoints'][hand_idx, frame_idx]
-                    keypoints_window = camera.eye_to_window(camera.world_to_eye(saved_hand_data))
-                    for point in keypoints_window :
-                        x, y = point
-                        cv2.circle(image, (int(x), int(y)), 2, ume_handedness_color_map[hand_idx], -1)
+            # plot uume hand pose 
+            for hand_index, hand_pose in projected_keypoints_dict[0].items():
+                for point in hand_pose:
+                    x, y = point
+                    cv2.circle(frame_left_bgr, (int(x), int(y)), 2, ume_handedness_color_map[hand_index], -1)
+            for hand_index, hand_pose in projected_keypoints_dict[1].items():
+                for point in hand_pose:
+                    x, y = point
+                    cv2.circle(frame_right_bgr, (int(x), int(y)), 2, ume_handedness_color_map[hand_index], -1)
 
-                    for con in HAND_CONNECTION_MAP :
-                        cv2.line(
-                            image,
-                            keypoints_window[con[0]].astype(np.int32),
-                            keypoints_window[con[1]].astype(np.int32),
-                            result_handedness_color_map[hand_idx],
-                            2
-                        )
-                    
-                
-                cv2.imshow(f"cam{cam_idx}", image)
+
+            for con in HAND_CONNECTION_MAP :
+                for hand_idx, hand_pose in projected_keypoints_dict[0].items() :
+                    cv2.line(
+                        frame_left_bgr, 
+                        hand_pose[con[0]].astype(np.int32), 
+                        hand_pose[con[1]].astype(np.int32), 
+                        ume_handedness_color_map[hand_idx],
+                        2
+                    )
+                for hand_idx, hand_pose in projected_keypoints_dict[1].items() :
+                    cv2.line(
+                        frame_right_bgr, 
+                        hand_pose[con[0]].astype(np.int32), 
+                        hand_pose[con[1]].astype(np.int32), 
+                        ume_handedness_color_map[hand_idx],
+                        2
+                    )
+
+            cv2.imshow('cam0', frame_left_bgr)
+            cv2.imshow('cam1', frame_right_bgr)
             k = cv2.waitKey(1)
             if k==49:
                 break
 
             fps_outer = 0.5 * fps_outer + 0.5 * (1 / (time.time() - stt))
-            # print(f"FPS: {fps_outer:.2f}, {fps_inner:.2f}")
+            print(f"FPS: {fps_outer:.2f}, {fps_inner:.2f}")
             
         
     cap.release()
