@@ -109,7 +109,7 @@ class CameraReader(mp.Process):
             ) for shm in self.mono_frames_shm_list
         ]
         
-        print('camera-camera')
+        # print('camera-camera')
         cap = cv2.VideoCapture(self.config.camera.cv_camera_index)
         cap.set(cv2.CAP_PROP_FRAME_WIDTH, self.config.camera.image_width * self.config.camera.n_views)
         cap.set(cv2.CAP_PROP_FRAME_HEIGHT, self.config.camera.image_height)
@@ -128,12 +128,6 @@ class CameraReader(mp.Process):
             multiview_frame_rgb = cv2.cvtColor(multiview_frame, cv2.COLOR_BGR2RGB)
             multiview_frame_mono = cv2.cvtColor(multiview_frame, cv2.COLOR_BGR2GRAY)
 
-            # print(multiview_frame_rgb)
-            # print(multiview_frame_mono)
-
-            # cv2.imshow('camera-reader-rgb', multiview_frame_rgb) # 응답없음 에러남
-            # cv2.imshow('camera-reader-mono', multiview_frame_mono) # 응답없음 에러남
-
             for view_idx in range(self.config.camera.n_views):
                 self.rgb_frames_array_list[index][view_idx][:] = multiview_frame_rgb[
                     :, 
@@ -143,37 +137,19 @@ class CameraReader(mp.Process):
                     :, 
                     view_idx * self.config.camera.image_width : (view_idx + 1) * self.config.camera.image_width
                 ]
-                # ex_img = self.mono_frames_array_list[index][view_idx][:]
-                # print(ex_img)
-                # cv2.imwrite('./ex_img.jpg', ex_img)
-                
+
             self.cam2mp.put((index))
 
             index += 1
             index %= self.config.buffer.size
-            print(f'cam2mp-{index}')
+            # print(f'cam2mp-{index}')
 
 
 
 if __name__ == "__main__":
     freeze_support()
     config = tyro.cli(Config)
-    print('1')
-    #print(sys.version)
-
-    # rgb_frames_shm_list = [
-    #     shared_memory.SharedMemory(
-    #         create = True,
-    #         size = np.prod((
-    #             config.camera.n_views, 
-    #             config.camera.image_height, 
-    #             config.camera.image_width, 
-    #             3
-    #         ))
-    #         # *np.dtype(np.uint8).itemsize
-    #     ) for _ in range(config.buffer.size)
-    # ]
-
+    
     try:
         rgb_frames_shm_list = [
             shared_memory.SharedMemory(
@@ -189,24 +165,11 @@ if __name__ == "__main__":
     except Exception as e:
         print(f"Error creating shared memory: {e}")
 
-    print('2')
+
     rgb_frames_shm_name_list = [
         shm.name for shm in rgb_frames_shm_list
     ]
-    # print(rgb_frames_shm_name_list)
-    print('3')
     
-    # mono_frames_shm_list = [
-    #     shared_memory.SharedMemory(
-    #         create = True,
-    #         size = np.prod((
-    #             config.camera.n_views,
-    #             config.camera.image_height,
-    #             config.camera.image_width
-    #         ))
-    #     ) for _ in range(config.buffer.size)
-    # ]
-
     try:
         mono_frames_shm_list = [
             shared_memory.SharedMemory(
@@ -221,24 +184,19 @@ if __name__ == "__main__":
     except Exception as e:
         print(f"Error creating shared memory: {e}")
 
-    print('4')
+
     mono_frames_shm_name_list = [
         shm.name for shm in mono_frames_shm_list
     ]
-    # print(mono_frames_shm_name_list)
-    print(mono_frames_shm_list)
-    print('5')
+    
 
     
     cam2mp = mp.Queue()
     mp2ume = mp.Queue()
     ume2vz = mp.Queue()
 
-    print('6')
-
     stop_event = mp.Event()
 
-    print('7')
     
     camera_reader = CameraReader(
         config = config,
@@ -272,15 +230,8 @@ if __name__ == "__main__":
         verbose = False
     )
 
-    processes = [camera_reader, media_pipe_estimator, image_visualizer, ume_tracker] # 이게 가장 잘 동작하는 것 같음
-    # processes = [camera_reader, image_visualizer]
-    # processes = [image_visualizer, ume_tracker, media_pipe_estimator, camera_reader]
-    # processes = [camera_reader, media_pipe_estimator, ume_tracker ,image_visualizer]
-    # processes = [camera_reader, media_pipe_estimator, ume_tracker]
-    # processes = [camera_reader]
-    # processes = [media_pipe_estimator]
-    # processes = [ume_tracker]
-    # processes = [image_visualizer]
+    # processes = [camera_reader, media_pipe_estimator, image_visualizer, ume_tracker]
+    processes = [camera_reader, media_pipe_estimator, ume_tracker ,image_visualizer]
 
     
     # print(processes)
@@ -294,36 +245,7 @@ if __name__ == "__main__":
     for p in processes:
         print('process-join')
         p.join()
-
-    # try:
-    #     while True :
-    #         continue
-    # finally:
-    #     for p in processes:
-    #         print('process-join')
-    #         p.join()
-    #     for shm in rgb_frames_shm_list + mono_frames_shm_list:
-    #         print('shm')
-    #         shm.close()
-    #         shm.unlink()
-    
-    # try:
-    #     for p in processes:
-    #         print('process-join')
-    #         p.join()
-    # except Exception as e:
-    #     print(f'Error joining process : {e}')
-
-    # try:
-    #     for shm in rgb_frames_shm_list + mono_frames_shm_list:
-    #         print('shm')
-    #         shm.close()
-    #         shm.unlink()
-    # except Exception as e:
-    #     print(f"Error closing or unlinking shared memory: {e}")
-
-
-    print('process--while')
+        
     try:
         # while True :
         #     continue
