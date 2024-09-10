@@ -29,6 +29,7 @@ class ImageVisualizer(mp.Process):
         self.verbose = verbose
         
     def run(self):
+        print('visual-run')
         
         self.rgb_shm_list = [
             shared_memory.SharedMemory(
@@ -51,6 +52,7 @@ class ImageVisualizer(mp.Process):
 
         fps = 0
         while not self.stop_event.is_set():
+            print('visual-visual')
             
             stt = time.time()
             
@@ -61,10 +63,14 @@ class ImageVisualizer(mp.Process):
                 projected_keypoints_dict
             ) = self.ume2imgviz.get()
 
+            print('visual-ume')
+
             multiview_frame = self.shared_array_rgb_list[index].copy()
             
             for cam_idx in range(self.config.camera.n_views):
                 frame = multiview_frame[cam_idx]
+
+                cv2.imshow('example', frame)
                 
                 for hand_idx, hand_pose in mp_hand_pose_dict[cam_idx].items():
                     if hand_pose.mean() > 0.1:

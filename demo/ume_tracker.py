@@ -21,6 +21,53 @@ from lib.tracker.perspective_crop import landmarks_from_hand_pose
 from lib.tracker.tracker import HandTracker, HandTrackerOpts, ViewData, InputFrame
 from lib.models.model_loader import load_pretrained_model
 
+# initialize camera model
+IMG_WIDTH = 640
+IMG_HEIGHT = 480
+
+left_to_right_r = np.array([
+    9.9997658245714527e-01, 5.5910744958795095e-04, 6.8206990981942916e-03,
+    -5.4903304536865717e-04, 9.9999875583076248e-01, -1.4788169738349651e-03,
+    -6.8215174296769373e-03, 1.4750375543776898e-03, 9.9997564528550886e-01
+]).reshape(3, 3)
+
+left_to_right_t = np.array([
+    -5.9457914254177978e-02, -6.8318101539255457e-05, -1.8101725187729225e-04
+])
+# k1, k2, k3, k4, p1, p2, k5, k6
+distortion_coeffs_left = (
+    -3.7539305827469560e-02, 
+    -8.7553205432575471e-03,
+    2.2015408171895236e-03, 
+    -6.6218076061138698e-04,
+    0, 0, 0, 0
+)
+camera_to_world_xf_left = np.eye(4)
+rotation_left = np.array([
+    [9.9997658245714527e-01,  5.5910744958795095e-04,  6.8206990981942916e-03,],
+    [-5.4903304536865717e-04, 9.9999875583076248e-01, -1.4788169738349651e-03,],
+    [-6.8215174296769373e-03, 1.4750375543776898e-03,  9.9997564528550886e-01 ],
+]).reshape(3, 3)
+camera_to_world_xf_left[:3, :3] = rotation_left
+#camera_to_world_xf_left[:3, 3] = [
+
+distortion_coeffs_right = (
+    -3.6790400486095221e-02, 
+    -8.2041573433038941e-03,
+    1.0552974220937024e-03, 
+    -2.5841665172692902e-04,
+    0, 0, 0, 0
+)
+camera_to_world_xf_right = np.eye(4)
+rotation_right = np.array([
+    [9.9999470555416226e-01, 1.1490100298631428e-03, 3.0444440536135159e-03,],
+    [-1.1535052313709361e-03, 9.9999824663038117e-01, 1.4751819698614872e-03,],
+    [-3.0427437166985561e-03, -1.4786859417328980e-03, 9.9999427758290704e-01 ],
+]).reshape(3, 3)
+camera_to_world_xf_right[:3, :3] = rotation_right
+camera_to_world_xf_right[:3, 3] = left_to_right_t
+#camera_to_world_xf_right[:3, 3] = [
+
 
 
 class UmeTracker(mp.Process):
@@ -41,37 +88,35 @@ class UmeTracker(mp.Process):
         self.ume2vz = ume2vz
         self.stop_event = stop_event
         self.verbose = verbose
+        # # initialize camera model
+        # IMG_WIDTH = 640
+        # IMG_HEIGHT = 480
 
+        # left_to_right_r = np.array([
+        #     9.9997658245714527e-01, 5.5910744958795095e-04, 6.8206990981942916e-03,
+        #     -5.4903304536865717e-04, 9.9999875583076248e-01, -1.4788169738349651e-03,
+        #     -6.8215174296769373e-03, 1.4750375543776898e-03, 9.9997564528550886e-01
+        # ]).reshape(3, 3)
 
-        # initialize camera model
-        IMG_WIDTH = 640
-        IMG_HEIGHT = 480
-
-        left_to_right_r = np.array([
-            9.9997658245714527e-01, 5.5910744958795095e-04, 6.8206990981942916e-03,
-            -5.4903304536865717e-04, 9.9999875583076248e-01, -1.4788169738349651e-03,
-            -6.8215174296769373e-03, 1.4750375543776898e-03, 9.9997564528550886e-01
-        ]).reshape(3, 3)
-
-        left_to_right_t = np.array([
-            -5.9457914254177978e-02, -6.8318101539255457e-05, -1.8101725187729225e-04
-        ])
-        # k1, k2, k3, k4, p1, p2, k5, k6
-        distortion_coeffs_left = (
-            -3.7539305827469560e-02, 
-            -8.7553205432575471e-03,
-            2.2015408171895236e-03, 
-            -6.6218076061138698e-04,
-            0, 0, 0, 0
-        )
-        camera_to_world_xf_left = np.eye(4)
-        rotation_left = np.array([
-            [9.9997658245714527e-01,  5.5910744958795095e-04,  6.8206990981942916e-03,],
-            [-5.4903304536865717e-04, 9.9999875583076248e-01, -1.4788169738349651e-03,],
-            [-6.8215174296769373e-03, 1.4750375543776898e-03,  9.9997564528550886e-01 ],
-        ]).reshape(3, 3)
-        camera_to_world_xf_left[:3, :3] = rotation_left
-        #camera_to_world_xf_left[:3, 3] = [
+        # left_to_right_t = np.array([
+        #     -5.9457914254177978e-02, -6.8318101539255457e-05, -1.8101725187729225e-04
+        # ])
+        # # k1, k2, k3, k4, p1, p2, k5, k6
+        # distortion_coeffs_left = (
+        #     -3.7539305827469560e-02, 
+        #     -8.7553205432575471e-03,
+        #     2.2015408171895236e-03, 
+        #     -6.6218076061138698e-04,
+        #     0, 0, 0, 0
+        # )
+        # camera_to_world_xf_left = np.eye(4)
+        # rotation_left = np.array([
+        #     [9.9997658245714527e-01,  5.5910744958795095e-04,  6.8206990981942916e-03,],
+        #     [-5.4903304536865717e-04, 9.9999875583076248e-01, -1.4788169738349651e-03,],
+        #     [-6.8215174296769373e-03, 1.4750375543776898e-03,  9.9997564528550886e-01 ],
+        # ]).reshape(3, 3)
+        # camera_to_world_xf_left[:3, :3] = rotation_left
+        # #camera_to_world_xf_left[:3, 3] = [
         self.cam_left = Fisheye62CameraModel(
             width   = IMG_WIDTH,
             height  = IMG_HEIGHT,
@@ -80,22 +125,22 @@ class UmeTracker(mp.Process):
             distort_coeffs = distortion_coeffs_left,
             camera_to_world_xf = np.eye(4)
         )
-        distortion_coeffs_right = (
-            -3.6790400486095221e-02, 
-            -8.2041573433038941e-03,
-            1.0552974220937024e-03, 
-            -2.5841665172692902e-04,
-            0, 0, 0, 0
-        )
-        camera_to_world_xf_right = np.eye(4)
-        rotation_right = np.array([
-            [9.9999470555416226e-01, 1.1490100298631428e-03, 3.0444440536135159e-03,],
-            [-1.1535052313709361e-03, 9.9999824663038117e-01, 1.4751819698614872e-03,],
-            [-3.0427437166985561e-03, -1.4786859417328980e-03, 9.9999427758290704e-01 ],
-        ]).reshape(3, 3)
-        camera_to_world_xf_right[:3, :3] = rotation_right
-        camera_to_world_xf_right[:3, 3] = left_to_right_t
-        #camera_to_world_xf_right[:3, 3] = [
+        # distortion_coeffs_right = (
+        #     -3.6790400486095221e-02, 
+        #     -8.2041573433038941e-03,
+        #     1.0552974220937024e-03, 
+        #     -2.5841665172692902e-04,
+        #     0, 0, 0, 0
+        # )
+        # camera_to_world_xf_right = np.eye(4)
+        # rotation_right = np.array([
+        #     [9.9999470555416226e-01, 1.1490100298631428e-03, 3.0444440536135159e-03,],
+        #     [-1.1535052313709361e-03, 9.9999824663038117e-01, 1.4751819698614872e-03,],
+        #     [-3.0427437166985561e-03, -1.4786859417328980e-03, 9.9999427758290704e-01 ],
+        # ]).reshape(3, 3)
+        # camera_to_world_xf_right[:3, :3] = rotation_right
+        # camera_to_world_xf_right[:3, 3] = left_to_right_t
+        # #camera_to_world_xf_right[:3, 3] = [
         self.cam_right = Fisheye62CameraModel(
             width   = IMG_WIDTH,
             height  = IMG_HEIGHT,
@@ -106,7 +151,9 @@ class UmeTracker(mp.Process):
         )
 
 
+
     def run(self):
+        print('ume-run')
 
         self.shm_list = [
             shared_memory.SharedMemory(

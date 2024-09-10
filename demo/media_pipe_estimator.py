@@ -67,6 +67,8 @@ class MediaPipeWorker(mp.Process):
                 index = self.in_queue.get()
                 
                 frame = self.rgb_frames_array_list[index][self.view_idx].copy()
+                
+                # cv2.imshow('example', frame)
             
                 results = mp_hand_detector.process(frame)
 
@@ -127,6 +129,7 @@ class MediaPipeEstimator(mp.Process):
         self.verbose = verbose
         
     def run(self):
+        print('mediapipe-run')
 
         in_queue_list = [
             mp.Queue() for _ in range(self.config.camera.n_views)
@@ -149,9 +152,10 @@ class MediaPipeEstimator(mp.Process):
         for p in worker_list:
             p.start()
 
-
+        print('mediapipe-mediapipe')
         while not self.stop_event.is_set():
             if not self.cam2mp.empty():
+
                 index = self.cam2mp.get()
                 
                 result_dict = {}
@@ -161,10 +165,15 @@ class MediaPipeEstimator(mp.Process):
                     (buffer_idx, mp_pose_dict) = out_queue_list[view_idx].get()
 
                     result_dict[view_idx] = mp_pose_dict
+
+                    # print(result_dict)
                     
                     if self.verbose:
                         print(result_dict)
                         print()
 
+                # print('mediapipe-multiview')
                 # self.mp2ume.put(index, result_dict)
                 self.mp2ume.put((index, deepcopy(result_dict)))
+
+
