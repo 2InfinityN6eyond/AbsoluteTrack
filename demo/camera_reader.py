@@ -66,7 +66,7 @@ class CameraReader(mp.Process):
             ) for shm in self.mono_frames_shm_list
         ]
         
-        print('camera-camera')
+        # print('camera-camera')
         cap = cv2.VideoCapture(self.config.camera.cv_camera_index)
         cap.set(cv2.CAP_PROP_FRAME_WIDTH, self.config.camera.image_width * self.config.camera.n_views)
         cap.set(cv2.CAP_PROP_FRAME_HEIGHT, self.config.camera.image_height)
