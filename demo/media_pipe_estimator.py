@@ -152,7 +152,7 @@ class MediaPipeEstimator(mp.Process):
         for p in worker_list:
             p.start()
 
-        print('mediapipe-mediapipe')
+        # print('mediapipe-mediapipe')
         while not self.stop_event.is_set():
             if not self.cam2mp.empty():
 
