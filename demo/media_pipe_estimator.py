@@ -176,4 +176,6 @@ class MediaPipeEstimator(mp.Process):
                 # self.mp2ume.put(index, result_dict)
                 self.mp2ume.put((index, deepcopy(result_dict)))
 
+                # print(f'mp2ume-{index}')
+
 
