@@ -1,6 +1,6 @@
 import os
 import json
-# import socket
+import socket
 import time
 import tyro
 import numpy as np
@@ -145,8 +145,8 @@ class UmeTracker(mp.Process):
         # tracker_opts.hand_ratio_in_crop = 0.5
         tracker = HandTracker(model, tracker_opts)
 
-        # sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-        # serverAddressPort = ("127.0.0.1", 5052)
+        sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        serverAddressPort = ("127.0.0.1", 5052)
 
         fps = 0
         while not self.stop_event.is_set():
@@ -224,7 +224,7 @@ class UmeTracker(mp.Process):
                 
                 content = ";".join(content)
                 
-                # sock.sendto(str.encode(str(content)), serverAddressPort)
+                sock.sendto(str.encode(str(content)), serverAddressPort)
 
 
 

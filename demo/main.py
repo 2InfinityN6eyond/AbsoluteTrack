@@ -73,7 +73,7 @@ class CameraReader(mp.Process):
         
         
     def run(self):
-        print('camear-run')
+        print('camera-run')
         self.rgb_frames_shm_list = [
             shared_memory.SharedMemory(
                 name = shm_name
