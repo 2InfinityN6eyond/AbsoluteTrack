@@ -1,48 +1,44 @@
-import os
-import json
-import socket
-import time
-import tyro
-import numpy as np
-import cv2
-from dataclasses import dataclass
-
 import multiprocessing as mp
 from multiprocessing import shared_memory
+import numpy as np
+import os
+import json
+import time
+import socket
 
+
+import cv2
 
 import sys
 sys.path.append('..')
 
-
+import lib.common.camera as camera
+from lib.tracker.tracker import HandTracker
 from lib.common.camera import Fisheye62CameraModel
+
+from lib.models.model_loader import load_pretrained_model
+from lib.tracker.tracker import HandTracker, HandTrackerOpts, InputFrame, ViewData
 from lib.common.hand import HandModel
 from lib.tracker.perspective_crop import landmarks_from_hand_pose
-from lib.tracker.tracker import HandTracker, HandTrackerOpts, ViewData, InputFrame
-from lib.models.model_loader import load_pretrained_model
-
-
 
 class UmeTracker(mp.Process):
     def __init__(
         self,
         config,
-        shm_name_list,
+        shared_array_mono_names,
         mp2ume,
-        ume2vz,
+        ume2imgviz,
         stop_event,
         verbose = False
     ):
-
         super().__init__()
         self.config = config
-        self.shm_name_list = shm_name_list
+        self.shared_array_mono_names = shared_array_mono_names
         self.mp2ume = mp2ume
-        self.ume2vz = ume2vz
+        self.ume2imgviz = ume2imgviz
         self.stop_event = stop_event
         self.verbose = verbose
-
-
+        
         # initialize camera model
         IMG_WIDTH = 640
         IMG_HEIGHT = 480
@@ -105,27 +101,36 @@ class UmeTracker(mp.Process):
             camera_to_world_xf = camera_to_world_xf_right
         )
 
-
     def run(self):
+        # initialize mono shared array
+        # self.shared_array_mono_list = [
+        #     np.frombuffer(
+        #         self.shared_array_mono[i].buf, dtype=np.uint8
+        #     ).reshape((
+        #         2 if self.config.is_stereo else 1, 
+        #         self.config.camera.image_height, 
+        #         self.config.camera.image_width,
+        #     )) for i in range(self.config.buffer.size)
+        # ]
 
-        self.shm_list = [
+
+        self.mono_shm_list = [
             shared_memory.SharedMemory(
-                name = shm_name
-            ) for shm_name in self.shm_name_list
+                name = name
+            ) for name in self.shared_array_mono_names
         ]
-        self.frames_array_list = [
+        self.shared_array_mono_list = [
             np.ndarray(
-                shape = (
-                    self.config.camera.n_views,
-                    self.config.camera.image_height,
+                (
+                    2 if self.config.is_stereo else 1, 
+                    self.config.camera.image_height, 
                     self.config.camera.image_width,
                 ),
-                dtype = np.uint8,
-                buffer = shm.buf
-            ) for shm in self.shm_list
+                dtype=np.uint8,
+                buffer=shm.buf
+            ) for shm in self.mono_shm_list
         ]
         
-
         UMETRACK_ROOT = ".."
         HAND_MODEL_DATA_PATH = os.path.join(UMETRACK_ROOT, "dataset/generic_hand_model.json")
         with open(HAND_MODEL_DATA_PATH, 'r') as f:
@@ -137,9 +142,9 @@ class UmeTracker(mp.Process):
         model = load_pretrained_model(model_path)
         model.eval()
         tracker_opts = HandTrackerOpts()
-        # tracker_opts.hand_ratio_in_crop = 0.5
+        tracker_opts.hand_ratio_in_crop = 0.5 
         tracker = HandTracker(model, tracker_opts)
-
+        
         sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         serverAddressPort = ("127.0.0.1", 5052)
 
@@ -149,12 +154,16 @@ class UmeTracker(mp.Process):
             
             if self.mp2ume.empty():
                 continue
-
+            
             index, mp_hand_pose_dict = self.mp2ume.get()
-
-            frame = self.frames_array_list[index].copy()
-
-
+            
+            frame = self.shared_array_mono_list[index].copy()
+            # mp_pose_results = self.shared_mp_pose_list[index]
+            
+            
+            cv2.imshow("frame ume", frame[0])
+            cv2.waitKey(1)
+            
             fisheye_stereo_input_frame = InputFrame(
                 views = [
                     ViewData(
@@ -169,75 +178,54 @@ class UmeTracker(mp.Process):
                     )
                 ]
             )
-
+            
             hand_pose_window_left_cam = mp_hand_pose_dict[0]
             hand_pose_window_right_cam = mp_hand_pose_dict[1]
-
-            crop_camera_dict = tracker.gen_crop_cameras_from_stereo_camera_with_window_hand_pose(
-                camera_left = self.cam_left,
-                camera_right = self.cam_right,
-                window_hand_pose_left = hand_pose_window_left_cam,
-                window_hand_pose_right = hand_pose_window_right_cam
-            )
-
-            res = tracker.track_frame_analysis(
-                fisheye_stereo_input_frame, 
-                hand_model, 
-                crop_camera_dict,
-                None
-            )
-
-            # res = tracker.track_frame(
-            #     fisheye_stereo_input_frame,
-            #     hand_model,
-            #     crop_camera_dict,
-            # )
+            
             
             tracked_keypoints_dict = {}
-
-            for hand_idx in res.hand_poses.keys() :
-                tracked_keypoints = landmarks_from_hand_pose(
-                    hand_model, res.hand_poses[hand_idx], hand_idx
-                )
-                tracked_keypoints_dict[hand_idx] = tracked_keypoints
-
-
-
-            if 0 in tracked_keypoints_dict and 1 in tracked_keypoints_dict :
-               
-                
-                content = ["U"]
-                for hand_idx in tracked_keypoints_dict.keys() :
-                    data = tracked_keypoints_dict[hand_idx].copy()
-                    data[:, :2] *= -1
-                    FLIP_X = True
-                    if FLIP_X :
-                        data[:, 0] *= -1
-                    content.append(str(data.flatten().astype(int).tolist()))
-                
-                    print(data.mean(axis=0).astype(np.int32))
-                
-                print()
-                content = ";".join(content)
-                
-                sock.sendto(str.encode(str(content)), serverAddressPort)
-
-
-
             projected_keypoints_dict = {0:{}, 1:{}}
             
-            for cam_idx in range(2):
-                camera = fisheye_stereo_input_frame.views[cam_idx].camera
-                per_cam_projected_keypoints_dict = {}
-                for hand_idx in tracked_keypoints_dict.keys():
-                    tracked_keypoints = tracked_keypoints_dict[hand_idx]
-                    projected_keypoints = camera.eye_to_window(
-                        camera.world_to_eye(tracked_keypoints)
-                    )
-                    per_cam_projected_keypoints_dict[hand_idx] = projected_keypoints
-                projected_keypoints_dict[cam_idx] = per_cam_projected_keypoints_dict            
             
-            self.ume2vz.put((
+            # crop_camera_dict = tracker.gen_crop_cameras_from_stereo_camera_with_window_hand_pose(
+            #     camera_left = self.cam_left,
+            #     camera_right = self.cam_right,
+            #     window_hand_pose_left = hand_pose_window_left_cam,
+            #     window_hand_pose_right = hand_pose_window_right_cam
+            # )
+
+            # res = tracker.track_frame_analysis(
+            #     fisheye_stereo_input_frame, 
+            #     hand_model, 
+            #     crop_camera_dict,
+            #     None
+            # )
+            
+            # for hand_idx in res.hand_poses.keys() :
+            #     tracked_keypoints = landmarks_from_hand_pose(
+            #         hand_model, res.hand_poses[hand_idx], hand_idx
+            #     )
+            #     tracked_keypoints_dict[hand_idx] = tracked_keypoints
+                           
+            # for cam_idx in range(2 if self.config.is_stereo else 1):
+            #     camera = fisheye_stereo_input_frame.views[cam_idx].camera
+            #     per_cam_projected_keypoints_dict = {}
+            #     for hand_idx in tracked_keypoints_dict.keys():
+            #         tracked_keypoints = tracked_keypoints_dict[hand_idx]
+            #         projected_keypoints = camera.eye_to_window(
+            #             camera.world_to_eye(tracked_keypoints)
+            #         )
+            #         per_cam_projected_keypoints_dict[hand_idx] = projected_keypoints
+            #     projected_keypoints_dict[cam_idx] = per_cam_projected_keypoints_dict            
+            
+            
+            fps = 0.8 * fps + 0.2 * (1 / (time.time() - stt))
+            
+            if self.verbose:
+                print(f"                     {index} UME FPS: {int(fps)} lenIDX2: {self.shared_array_mono_list[index][0, 0, 0]}")
+            
+            
+            self.ume2imgviz.put((
                 index,
                 mp_hand_pose_dict,
                 tracked_keypoints_dict,

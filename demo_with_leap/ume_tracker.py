@@ -203,25 +203,23 @@ class UmeTracker(mp.Process):
 
 
 
-            if 0 in tracked_keypoints_dict and 1 in tracked_keypoints_dict :
-               
+            # send data to Unity UDP
+            # if 0 in tracked_keypoints_dict and 1 in tracked_keypoints_dict :
+            #     content = ["U"]
+            #     for hand_idx in tracked_keypoints_dict.keys() :
+            #         data = tracked_keypoints_dict[hand_idx].copy()
+            #         data[:, :2] *= -1
+            #         FLIP_X = True
+            #         if FLIP_X :
+            #             data[:, 0] *= -1
+            #         content.append(str(data.flatten().astype(int).tolist()))
                 
-                content = ["U"]
-                for hand_idx in tracked_keypoints_dict.keys() :
-                    data = tracked_keypoints_dict[hand_idx].copy()
-                    data[:, :2] *= -1
-                    FLIP_X = True
-                    if FLIP_X :
-                        data[:, 0] *= -1
-                    content.append(str(data.flatten().astype(int).tolist()))
+            #         print(data.mean(axis=0).astype(np.int32))
                 
-                    print(data.mean(axis=0).astype(np.int32))
+            #     print()
+            #     content = ";".join(content)
                 
-                print()
-                content = ";".join(content)
-                
-                sock.sendto(str.encode(str(content)), serverAddressPort)
-
+            #     sock.sendto(str.encode(str(content)), serverAddressPort)
 
 
             projected_keypoints_dict = {0:{}, 1:{}}
@@ -236,6 +234,8 @@ class UmeTracker(mp.Process):
                     )
                     per_cam_projected_keypoints_dict[hand_idx] = projected_keypoints
                 projected_keypoints_dict[cam_idx] = per_cam_projected_keypoints_dict            
+            
+            
             
             self.ume2vz.put((
                 index,

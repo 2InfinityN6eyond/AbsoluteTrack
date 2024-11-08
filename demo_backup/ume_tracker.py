@@ -202,11 +202,13 @@ class UmeTracker(mp.Process):
                 tracked_keypoints_dict[hand_idx] = tracked_keypoints
 
 
-
             if 0 in tracked_keypoints_dict and 1 in tracked_keypoints_dict :
-               
+                # print(
+                #     tracked_keypoints_dict[0].mean(axis=0).astype(np.int32),
+                #     tracked_keypoints_dict[1].mean(axis=0).astype(np.int32),
+                # )
                 
-                content = ["U"]
+                content = []
                 for hand_idx in tracked_keypoints_dict.keys() :
                     data = tracked_keypoints_dict[hand_idx].copy()
                     data[:, :2] *= -1
@@ -215,9 +217,6 @@ class UmeTracker(mp.Process):
                         data[:, 0] *= -1
                     content.append(str(data.flatten().astype(int).tolist()))
                 
-                    print(data.mean(axis=0).astype(np.int32))
-                
-                print()
                 content = ";".join(content)
                 
                 sock.sendto(str.encode(str(content)), serverAddressPort)
